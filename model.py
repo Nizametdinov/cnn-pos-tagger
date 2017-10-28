@@ -65,15 +65,25 @@ def linear(input_, output_size, scope=None):
     return tf.matmul(input_, matrix) + bias_term
 
 
+def create_rnn_cell(rnn_size, dropout):
+    cell = tf.contrib.rnn.BasicLSTMCell(rnn_size, state_is_tuple=True, forget_bias=0.0, reuse=False)
+    if dropout > 0.0:
+        cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=1. - dropout)
+    return cell
+
+
 def model():
     batch_size = 50
     max_words_in_sentence = 50
     max_word_length = 30
     char_vocab_size = 100
+    num_output_classes = 20
     embedding_size = 16
     kernel_widths = [1, 2, 3, 4, 5, 6, 7]
     kernel_features = [25 * w for w in kernel_widths]
     num_highway_layers = 2
+    rnn_size = 650
+    dropout = 0.5
 
     input_ = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence, max_word_length])
 
@@ -90,4 +100,19 @@ def model():
         cnn_output.append(tf.squeeze(pool, [1, 2]))
 
     cnn_output = tf.concat(cnn_output, 1)
-    highway(cnn_output, cnn_output.shape[-1], num_layers=num_highway_layers)
+    highway_output = highway(cnn_output, cnn_output.shape[-1], num_layers=num_highway_layers)
+
+    cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
+    initial_rnn_state = cell.zero_state(batch_size, dtype=tf.float32)
+
+    highway_output = tf.reshape(highway_output, [batch_size, max_words_in_sentence, -1])
+    rnn_input = [tf.squeeze(x, [1]) for x in tf.split(highway_output, max_words_in_sentence, 1)]
+
+    outputs, final_rnn_state = tf.contrib.rnn.static_rnn(cell, rnn_input,
+                                                         initial_state=initial_rnn_state, dtype=tf.float32)
+
+    logits = []
+    matrix = weight_variable(shape=[outputs[0].shape[-1], num_output_classes])
+    bias_term = bias_variable(shape=[num_output_classes])
+    for output in outputs:
+        logits.append(tf.matmul(output, matrix) + bias_term)
