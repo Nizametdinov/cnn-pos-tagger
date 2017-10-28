@@ -36,7 +36,7 @@ class DataReader:
             word = token.attrib['text']
             if self._word_has_stop_chars(word):
                 raise ValueError('sentence has invalid chars')
-            sentence.append([word, speech_part])
+            sentence.append((word, speech_part))
         return sentence
 
     def _get_sentences(self, tokens):
