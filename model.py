@@ -125,3 +125,25 @@ def loss(logits, batch_size, max_words_in_sentence):
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
     loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
     return targets, loss
+
+
+def train(loss, learning_rate=1.0, max_grad_norm=5.0):
+    ''' Builds training graph. '''
+    global_step = tf.Variable(0, name='global_step', trainable=False)
+
+    # SGD learning parameter
+    learning_rate = tf.Variable(learning_rate, name='learning_rate', trainable=False)
+
+    # collect all trainable variables
+    tvars = tf.trainable_variables()
+    grads, global_norm = tf.clip_by_global_norm(tf.gradients(loss, tvars), max_grad_norm)
+
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=global_step)
+
+    return {
+        'train_optimizer': train_op,
+        'learning_rate': learning_rate,
+        'global_step': global_step,
+        'global_norm': global_norm
+    }
