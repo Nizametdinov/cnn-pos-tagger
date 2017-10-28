@@ -7,10 +7,13 @@ class DataReader:
     def __init__(self, xml_filename):
         self._xml_filename = xml_filename
         self.sentences = []
+        self._uniq_chars = None
+        self._loaded = False
 
     def load(self):
         tokens = self._get_tokens(self._xml_filename)
         self.sentences = self._get_sentences(tokens)
+        self._loaded = True
 
     def _get_tokens(self, xml_filename):
         tree = etree.parse(xml_filename)
@@ -45,17 +48,30 @@ class DataReader:
         return sentences
 
     def get_uniq_chars(self):
-        uniq_chars = set()
-        for sentence in self.sentences:
-            for word, _speech_part in sentence:
-                for c in word:
-                    uniq_chars.add(c)
-        return uniq_chars
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
+        if self._uniq_chars:
+            return self._uniq_chars.copy()
+        else:
+            uniq_chars = set()
+            for sentence in self.sentences:
+                for word, _speech_part in sentence:
+                    for c in word:
+                        uniq_chars.add(c)
+            self._uniq_chars = uniq_chars
+        return uniq_chars.copy()
 
     def get_longest_sentence(self):
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
         return max(self.sentences, key=lambda sentence: len(sentence))
 
     def get_longest_word(self):
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
         max_length = 0
         longest_word = ''
 
@@ -82,4 +98,3 @@ class DataReader:
 # uniq_chars = loader.get_uniq_chars()
 # print('uniq_chars count: ', len(uniq_chars))
 # print('uniq_chars: ', uniq_chars)
-
