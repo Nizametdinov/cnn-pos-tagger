@@ -1,4 +1,6 @@
 import tensorflow as tf
+import time
+import numpy as np
 
 
 def weight_variable(shape):
@@ -72,18 +74,19 @@ def create_rnn_cell(rnn_size, dropout):
     return cell
 
 
-def model():
-    batch_size = 20
-    max_words_in_sentence = 50
-    max_word_length = 30
-    char_vocab_size = 100
-    num_output_classes = 20
-    embedding_size = 16
+def model(
+        batch_size=20,
+        max_words_in_sentence=50,
+        max_word_length=30,
+        char_vocab_size=100,
+        num_output_classes=20,
+        embedding_size=16,
+        dropout=0.5
+):
     kernel_widths = [1, 2, 3, 4, 5, 6, 7]
     kernel_features = [25 * w for w in kernel_widths]
     num_highway_layers = 2
     rnn_size = 650
-    dropout = 0.5
 
     input_ = tf.placeholder(tf.int32, [-1, max_words_in_sentence, max_word_length])
 
@@ -117,7 +120,7 @@ def model():
     for output in outputs:
         logits.append(tf.matmul(output, matrix) + bias_term)
 
-    return {}
+    return input_, logits, initial_rnn_state
 
 
 def loss(logits, batch_size, max_words_in_sentence):
@@ -141,9 +144,39 @@ def train(loss, learning_rate=1.0, max_grad_norm=5.0):
     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
     train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=global_step)
 
-    return {
-        'train_optimizer': train_op,
-        'learning_rate': learning_rate,
-        'global_step': global_step,
-        'global_norm': global_norm
-    }
+    return train_op, learning_rate, global_step, global_norm
+
+
+def train_model(epochs=1):
+    with tf.Session() as session:
+        input_, logits, initial_rnn_state = model()
+        targets, loss_ = loss(logits=logits, batch_size=20, max_words_in_sentence=50)  # TODO rename variable
+        train_op, learning_rate, global_step, global_norm = train(loss=loss_)
+
+        start_time = time.time()
+        for epoch in range(epochs):
+            batches = []
+            count = 0
+            for x, y in batches:
+                count += 1
+                loss_value, _, gradient_norm, step = session.run([
+                    loss_,
+                    train_op,
+                    global_norm,
+                    global_step
+                ], {
+                    input_: x,
+                    targets: y,
+                })
+
+                if count % 1 == 0:
+                    elapsed = time.time() - start_time
+                    print(
+                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f' % (
+                            step,
+                            epoch, count,
+                            len(batches),
+                            loss_value,
+                            np.exp(loss_value),
+                            elapsed,
+                            gradient_norm))
