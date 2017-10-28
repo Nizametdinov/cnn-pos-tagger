@@ -98,10 +98,17 @@ class DataReader:
             self._uniq_speach_parts = uniq_speach_parts
         return uniq_speach_parts.copy()
 
+
 # SENTENCES_SOURCE = 'data/sentences.xml'
 
 # loader = DataReader(SENTENCES_SOURCE)
 # loader.load()
+
+# from vocab import Vocab
+
+# vocab = Vocab(loader)
+# vocab.load()
+# print(vocab.part_to_index('NOUN'))
 
 # print(loader.get_uniq_speach_parts())
 
