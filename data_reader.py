@@ -8,6 +8,7 @@ class DataReader:
         self._xml_filename = xml_filename
         self.sentences = []
         self._uniq_chars = None
+        self._uniq_speach_parts = None
         self._loaded = False
 
     def load(self):
@@ -83,10 +84,26 @@ class DataReader:
                     longest_word = word
         return longest_word
 
+    def get_uniq_speach_parts(self):
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
+        if self._uniq_speach_parts:
+            return self._uniq_speach_parts.copy()
+        else:
+            uniq_speach_parts = set()
+            for sentence in self.sentences:
+                for _word, speech_part in sentence:
+                    uniq_speach_parts.add(speech_part)
+            self._uniq_speach_parts = uniq_speach_parts
+        return uniq_speach_parts.copy()
+
 # SENTENCES_SOURCE = 'data/sentences.xml'
 
 # loader = DataReader(SENTENCES_SOURCE)
 # loader.load()
+
+# print(loader.get_uniq_speach_parts())
 
 # print('sentences count: ', len(loader.sentences))
 # longest_sentence = loader.get_longest_sentence()
