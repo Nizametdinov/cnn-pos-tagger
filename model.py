@@ -73,7 +73,7 @@ def create_rnn_cell(rnn_size, dropout):
 
 
 def model():
-    batch_size = 50
+    batch_size = 20
     max_words_in_sentence = 50
     max_word_length = 30
     char_vocab_size = 100
@@ -85,7 +85,7 @@ def model():
     rnn_size = 650
     dropout = 0.5
 
-    input_ = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence, max_word_length])
+    input_ = tf.placeholder(tf.int32, [-1, max_words_in_sentence, max_word_length])
 
     embeddings = tf.truncated_normal([char_vocab_size, embedding_size])
     cnn_input = tf.nn.embedding_lookup(embeddings, input_)
@@ -116,3 +116,12 @@ def model():
     bias_term = bias_variable(shape=[num_output_classes])
     for output in outputs:
         logits.append(tf.matmul(output, matrix) + bias_term)
+
+    return {}
+
+
+def loss(logits, batch_size, max_words_in_sentence):
+    targets = tf.placeholder(tf.int16, [batch_size, max_words_in_sentence])
+    target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
+    loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
+    return targets, loss
