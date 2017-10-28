@@ -42,12 +42,12 @@ def linear(input_, output_size, scope=None):
         args: a tensor or a list of 2D, batch x n, Tensors.
     output_size: int, second dimension of W[i].
     scope: VariableScope for the created subgraph; defaults to "Linear".
-  Returns:
-    A 2D Tensor with shape [batch x output_size] equal to
-    sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
-  Raises:
-    ValueError: if some of the arguments has unspecified or wrong shape.
-  '''
+    Returns:
+        A 2D Tensor with shape [batch x output_size] equal to
+        sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+    Raises:
+        ValueError: if some of the arguments has unspecified or wrong shape.
+    '''
 
     shape = input_.get_shape().as_list()
     if len(shape) != 2:
@@ -73,6 +73,7 @@ def model():
     embedding_size = 16
     kernel_widths = [1, 2, 3, 4, 5, 6, 7]
     kernel_features = [25 * w for w in kernel_widths]
+    num_highway_layers = 2
 
     input_ = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence, max_word_length])
 
@@ -89,3 +90,4 @@ def model():
         cnn_output.append(tf.squeeze(pool, [1, 2]))
 
     cnn_output = tf.concat(cnn_output, 1)
+    highway(cnn_output, cnn_output.shape[-1], num_layers=num_highway_layers)
