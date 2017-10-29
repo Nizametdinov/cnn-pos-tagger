@@ -132,8 +132,13 @@ def model(
 
 def loss(logits, batch_size, max_words_in_sentence):
     targets = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence])
+    target_mask = tf.placeholder(tf.float32, [batch_size, max_words_in_sentence])
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
-    loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
+    target_mask_list = [tf.squeeze(x, [1]) for x in tf.split(target_mask, max_words_in_sentence, 1)]
+
+    loss = tf.reduce_mean(
+        tf.multiply(target_mask_list,
+                    tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list)))
 
     predictions = tf.concat([tf.reshape(tf.argmax(logit, 1), [batch_size, 1]) for logit in logits], 1)
 
@@ -147,7 +152,7 @@ def loss(logits, batch_size, max_words_in_sentence):
         tf.reduce_sum(tf.cast(correct_prediction, tf.float32)) for correct_prediction in correct_predictions
     ) / sum(tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(target, tf.int64), 0), tf.float32)) for target in target_list)
 
-    return targets, loss, accuracy, predictions
+    return targets, target_mask, loss, accuracy, predictions
 
 
 def train(loss, learning_rate=1.0, max_grad_norm=5.0):
@@ -168,9 +173,9 @@ def train(loss, learning_rate=1.0, max_grad_norm=5.0):
     return train_op, learning_rate, global_step, global_norm
 
 
-def batches(x, y, batch_size):
-    for i in range(0, len(x), batch_size):
-        yield x[i:i+batch_size], y[i:i+batch_size]
+def batches(*args, batch_size=20):
+    for i in range(0, len(args[0]), batch_size):
+        yield [x[i:i+batch_size] for x in args]
 
 
 def print_classiffication_report(y_true, y_pred, vocab):
@@ -197,7 +202,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
             num_output_classes=vocab.part_vocab_size()
         )
         # TODO: rename variable loss_
-        targets, loss_, accuracy, predictions = loss(
+        targets, target_mask, loss_, accuracy, predictions = loss(
             logits=logits,
             batch_size=batch_size,
             max_words_in_sentence=tensor_generator.max_sentence_length
@@ -209,14 +214,16 @@ def train_model(data_file='data/sentences.xml', epochs=1):
 
         input_tensor = tensor_generator.chars_tensor
         target_tensor = tensor_generator.target_tensor
+        target_mask_tensor = tensor_generator.target_mask
 
-        train_x, test_x, train_y, test_y, train_sentences, test_sentences = \
-            train_test_split(input_tensor, target_tensor, tensor_generator.sentences, random_state=0, train_size=0.5)
+        train_x, test_x, train_y, test_y, train_mask, test_mask, train_sentences, test_sentences = \
+            train_test_split(input_tensor, target_tensor, target_mask_tensor,
+                             tensor_generator.sentences, random_state=0, train_size=0.5)
         print(train_x.shape, train_y.shape, test_x.shape, test_y.shape)
 
         for epoch in range(epochs):
             count = 0
-            for x, y in batches(train_x, train_y, batch_size):
+            for x, y, y_mask in batches(train_x, train_y, train_mask, batch_size=batch_size):
                 if x.shape[0] != batch_size:
                     continue
                 count += 1
@@ -228,6 +235,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                 ], {
                     input_: x,
                     targets: y,
+                    target_mask: y_mask + 0.01,
                     dropout: 0.5
                 })
 
@@ -237,6 +245,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     ], {
                         input_: test_x[0:batch_size],
                         targets: test_y[0:batch_size],
+                        target_mask: test_mask[0:batch_size],
                         dropout: 0.
                     })
                     elapsed = time.time() - start_time

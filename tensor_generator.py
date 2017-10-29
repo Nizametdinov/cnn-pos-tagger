@@ -21,12 +21,15 @@ class TensorGenerator:
             [len(self.sentences), self.max_sentence_length, self.max_word_length], dtype=np.int32)
         self.target_tensor = np.zeros(
             [len(self.sentences), self.max_sentence_length], dtype=np.int32)
+        self.target_mask = np.zeros(
+            [len(self.sentences), self.max_sentence_length], dtype=np.float32)
         self.generate_tensors()
 
     def generate_tensors(self):
         for i, sentence in enumerate(self.sentences):
             for j, (word, target_class) in enumerate(sentence):
-                self.target_tensor[i, j] = self._vocab.part_to_index(target_class)  # target_class
+                self.target_tensor[i, j] = self._vocab.part_to_index(target_class)
+                self.target_mask[i, j] = 1
                 word = WORD_START + word + WORD_END
                 for k, symbol in enumerate(word):
                     self.chars_tensor[i, j, k] = self._vocab.char_to_index(symbol)
