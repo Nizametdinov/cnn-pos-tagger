@@ -6,6 +6,7 @@ from data_reader import DataReader
 from vocab import Vocab
 from tensor_generator import TensorGenerator
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 
 def weight_variable(shape):
@@ -134,6 +135,8 @@ def loss(logits, batch_size, max_words_in_sentence):
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
     loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
 
+    predictions = tf.concat([tf.reshape(tf.argmax(logit, 1), [batch_size, 1]) for logit in logits], 1)
+
     correct_predictions = [
         tf.logical_and(
             tf.not_equal(tf.cast(target, tf.int64), 0),
@@ -144,7 +147,7 @@ def loss(logits, batch_size, max_words_in_sentence):
         tf.reduce_sum(tf.cast(correct_prediction, tf.float32)) for correct_prediction in correct_predictions
     ) / sum(tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(target, tf.int64), 0), tf.float32)) for target in target_list)
 
-    return targets, loss, accuracy
+    return targets, loss, accuracy, predictions
 
 
 def train(loss, learning_rate=1.0, max_grad_norm=5.0):
@@ -170,6 +173,11 @@ def batches(x, y, batch_size):
         yield x[i:i+batch_size], y[i:i+batch_size]
 
 
+def print_classiffication_report(y_true, y_pred, vocab):
+    labels = np.array(vocab._index2part)[np.unique([y_true, y_pred])]
+    print(classification_report(y_true.flatten(), y_pred.flatten(), target_names=labels, digits=3))
+
+
 def train_model(data_file='data/sentences.xml', epochs=1):
     with tf.Session() as session:
         loader = DataReader(data_file)
@@ -189,7 +197,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
             num_output_classes=vocab.part_vocab_size()
         )
         # TODO: rename variable loss_
-        targets, loss_, accuracy = loss(
+        targets, loss_, accuracy, predictions = loss(
             logits=logits,
             batch_size=batch_size,
             max_words_in_sentence=tensor_generator.max_sentence_length
@@ -202,8 +210,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
         input_tensor = tensor_generator.chars_tensor
         target_tensor = tensor_generator.target_tensor
 
-        train_x, test_x, train_y, test_y = \
-            train_test_split(input_tensor, target_tensor, random_state=0, train_size=0.5)
+        train_x, test_x, train_y, test_y, train_sentences, test_sentences = \
+            train_test_split(input_tensor, target_tensor, tensor_generator.sentences, random_state=0, train_size=0.5)
         print(train_x.shape, train_y.shape, test_x.shape, test_y.shape)
 
         for epoch in range(epochs):
@@ -224,8 +232,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                 })
 
                 if count % report_step == 0:
-                    test_loss_value, accuracy_value = session.run([
-                        loss_, accuracy
+                    test_loss_value, accuracy_value, predicted = session.run([
+                        loss_, accuracy, predictions
                     ], {
                         input_: test_x[0:batch_size],
                         targets: test_y[0:batch_size],
@@ -242,6 +250,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                             elapsed,
                             gradient_norm))
                     print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
+                    if count % 5 == 0:
+                        print_classiffication_report(test_y[:batch_size], predicted, vocab)
 
 
 if __name__ == '__main__':
