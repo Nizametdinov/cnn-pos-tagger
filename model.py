@@ -132,7 +132,13 @@ def loss(logits, batch_size, max_words_in_sentence):
     targets = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence])
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
     loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
-    return targets, loss
+
+    correct_predictions = [tf.equal(tf.cast(target, tf.int64), tf.argmax(logit, 1)) for target, logit in zip(target_list, logits)]
+    accuracy = sum(
+        tf.reduce_mean(tf.cast(correct_prediction, tf.float32)) for correct_prediction in correct_predictions
+    ) / len(correct_predictions)
+
+    return targets, loss, accuracy
 
 
 def train(loss, learning_rate=1.0, max_grad_norm=5.0):
@@ -171,7 +177,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
             num_output_classes=vocab.part_vocab_size()
         )
         # TODO: rename variable loss_
-        targets, loss_ = loss(
+        targets, loss_, accuracy = loss(
             logits=logits,
             batch_size=batch_size,
             max_words_in_sentence=tensor_generator.max_sentence_length
@@ -200,16 +206,22 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                 })
 
                 if count % 1 == 0:
+                    accuracy_value = accuracy.eval({
+                        input_: input_tensor[100:120],
+                        targets: target_tensor[100:120],
+                        dropout: 0.
+                    })
                     elapsed = time.time() - start_time
                     print(
-                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f' % (
+                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f, accurary=%6.8f' % (
                             step,
                             epoch, count,
                             len(batches),
                             loss_value,
                             np.exp(loss_value),
                             elapsed,
-                            gradient_norm))
+                            gradient_norm,
+                            accuracy_value))
 
 
 if __name__ == '__main__':
