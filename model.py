@@ -113,9 +113,9 @@ def model(
 
     dropout = tf.placeholder(tf.float32)
     cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
-    initial_rnn_state = cell.zero_state(batch_size, dtype=tf.float32)
+    initial_rnn_state = cell.zero_state(tf.shape(input_)[0], dtype=tf.float32)
 
-    highway_output = tf.reshape(highway_output, [batch_size, max_words_in_sentence, int(highway_output.shape[-1])])
+    highway_output = tf.reshape(highway_output, [-1, max_words_in_sentence, int(highway_output.shape[-1])])
     rnn_input = [tf.squeeze(x, [1]) for x in tf.split(highway_output, max_words_in_sentence, 1)]
 
     outputs, final_rnn_state = tf.contrib.rnn.static_rnn(cell, rnn_input,
@@ -131,8 +131,8 @@ def model(
 
 
 def loss(logits, batch_size, max_words_in_sentence):
-    targets = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence])
-    target_mask = tf.placeholder(tf.float32, [batch_size, max_words_in_sentence])
+    targets = tf.placeholder(tf.int32, [None, max_words_in_sentence], name='targets')
+    target_mask = tf.placeholder(tf.float32, [None, max_words_in_sentence], name='targe_mask')
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
     target_mask_list = [tf.squeeze(x, [1]) for x in tf.split(target_mask, max_words_in_sentence, 1)]
 
@@ -140,7 +140,7 @@ def loss(logits, batch_size, max_words_in_sentence):
         tf.multiply(target_mask_list,
                     tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list)))
 
-    predictions = tf.concat([tf.reshape(tf.argmax(logit, 1), [batch_size, 1]) for logit in logits], 1)
+    predictions = tf.concat([tf.reshape(tf.argmax(logit, 1), [-1, 1]) for logit in logits], 1)
 
     correct_predictions = [
         tf.logical_and(
@@ -192,7 +192,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
         tensor_generator = TensorGenerator(loader, vocab)
 
         batch_size = 20
-        report_step = 1
+        report_step = 10
 
         input_, logits, initial_rnn_state, dropout = model(
             batch_size=batch_size,
@@ -243,14 +243,14 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     test_loss_value, accuracy_value, predicted = session.run([
                         loss_, accuracy, predictions
                     ], {
-                        input_: test_x[0:batch_size],
-                        targets: test_y[0:batch_size],
-                        target_mask: test_mask[0:batch_size],
+                        input_: test_x[:200],
+                        targets: test_y[:200],
+                        target_mask: test_mask[:200],
                         dropout: 0.
                     })
                     elapsed = time.time() - start_time
                     print(
-                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f' % (
+                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f elapsed = %.4fs, grad.norm=%6.8f' % (
                             step,
                             epoch, count,
                             train_x.shape[0]/batch_size,
@@ -259,8 +259,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                             elapsed,
                             gradient_norm))
                     print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
-                    if count % 5 == 0:
-                        print_classiffication_report(test_y[:batch_size], predicted, vocab)
+                    if count % 10 == 0:
+                        print_classiffication_report(test_y[:200], predicted, vocab)
 
 
 if __name__ == '__main__':
