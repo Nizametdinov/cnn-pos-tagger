@@ -16,11 +16,11 @@ class Vocab:
             self._char2index[char] = index
             self._index2char.append(char)
 
-    def _feed_speach_part(self, speach_part):
-        if speach_part not in self._part2index:
+    def _feed_speech_part(self, speech_part):
+        if speech_part not in self._part2index:
             index = len(self._part2index)
-            self._part2index[speach_part] = index
-            self._index2part.append(speach_part)
+            self._part2index[speech_part] = index
+            self._index2part.append(speech_part)
 
     def _load_initial_chars(self):
         self._feed_char(' ')
@@ -28,7 +28,7 @@ class Vocab:
         self._feed_char('}')
 
     def _load_initial_parts(self):
-        self._feed_speach_part('UNKNOWN')
+        self._feed_speech_part('UNKNOWN')
 
     def _load_chars(self):
         uniq_chars = self._data_reader.get_uniq_chars()
@@ -36,15 +36,15 @@ class Vocab:
         for c in sorted(uniq_chars):
             self._feed_char(c)
 
-    def _load_speach_parts(self):
-        uniq_speach_parts = self._data_reader.get_uniq_speach_parts()
+    def _load_speech_parts(self):
+        uniq_speech_parts = self._data_reader.get_uniq_speech_parts()
         self._load_initial_parts()
-        for part in sorted(uniq_speach_parts):
-            self._feed_speach_part(part)
+        for part in sorted(uniq_speech_parts):
+            self._feed_speech_part(part)
 
     def load(self):
         self._load_chars()
-        self._load_speach_parts()
+        self._load_speech_parts()
         self._loaded = True
 
     def char_to_index(self, char):
@@ -52,10 +52,10 @@ class Vocab:
             raise BaseException('chars not loaded')
         return self._char2index[char]
 
-    def part_to_index(self, speach_part):
+    def part_to_index(self, speech_part):
         if not self._loaded:
             raise BaseException('chars not loaded')
-        return self._part2index[speach_part]
+        return self._part2index[speech_part]
 
     def char_vocab_size(self):
         return len(self._index2char)

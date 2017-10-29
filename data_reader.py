@@ -7,14 +7,9 @@ class DataReader:
     def __init__(self, xml_filename):
         self._xml_filename = xml_filename
         self.sentences = []
-        self._uniq_chars = None
-        self._uniq_speach_parts = None
+        self._uniq_chars = set()
+        self._uniq_speech_parts = set()
         self._loaded = False
-
-    def load(self):
-        tokens = self._get_tokens(self._xml_filename)
-        self.sentences = self._get_sentences(tokens)
-        self._loaded = True
 
     def _get_tokens(self, xml_filename):
         tree = etree.parse(xml_filename)
@@ -27,6 +22,13 @@ class DataReader:
                 return True
         return False
 
+    def _add_uniq_chars(self, word):
+        for c in word:
+            self._uniq_chars.add(c)
+
+    def _add_uniq_speech_parts(self, speech_part):
+        self._uniq_speech_parts.add(speech_part)
+
     def _get_sentence(self, tokens_entry):
         sentence = []
         for token in tokens_entry:
@@ -36,6 +38,10 @@ class DataReader:
             word = token.attrib['text']
             if self._word_has_stop_chars(word):
                 raise ValueError('sentence has invalid chars')
+
+            self._add_uniq_chars(word)
+            self._add_uniq_speech_parts(speech_part)
+
             sentence.append((word, speech_part))
         return sentence
 
@@ -48,20 +54,21 @@ class DataReader:
                 pass
         return sentences
 
+    def load(self):
+        tokens = self._get_tokens(self._xml_filename)
+        self.sentences = self._get_sentences(tokens)
+        self._loaded = True
+
     def get_uniq_chars(self):
         if not self._loaded:
             raise BaseException('data not loaded')
+        return self._uniq_chars.copy()
 
-        if self._uniq_chars:
-            return self._uniq_chars.copy()
-        else:
-            uniq_chars = set()
-            for sentence in self.sentences:
-                for word, _speech_part in sentence:
-                    for c in word:
-                        uniq_chars.add(c)
-            self._uniq_chars = uniq_chars
-        return uniq_chars.copy()
+    def get_uniq_speech_parts(self):
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
+        return self._uniq_speech_parts.copy()
 
     def get_longest_sentence(self):
         if not self._loaded:
@@ -77,23 +84,9 @@ class DataReader:
         longest_word = ''
 
         for sentence in self.sentences:
-            for word, _speach_part in sentence:
+            for word, _speech_part in sentence:
                 word_len = len(word)
                 if word_len > max_length:
                     max_length = word_len
                     longest_word = word
         return longest_word
-
-    def get_uniq_speach_parts(self):
-        if not self._loaded:
-            raise BaseException('data not loaded')
-
-        if self._uniq_speach_parts:
-            return self._uniq_speach_parts.copy()
-        else:
-            uniq_speach_parts = set()
-            for sentence in self.sentences:
-                for _word, speech_part in sentence:
-                    uniq_speach_parts.add(speech_part)
-            self._uniq_speach_parts = uniq_speach_parts
-        return uniq_speach_parts.copy()
