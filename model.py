@@ -134,10 +134,15 @@ def loss(logits, batch_size, max_words_in_sentence):
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
     loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
 
-    correct_predictions = [tf.equal(tf.cast(target, tf.int64), tf.argmax(logit, 1)) for target, logit in zip(target_list, logits)]
+    correct_predictions = [
+        tf.logical_and(
+            tf.not_equal(tf.cast(target, tf.int64), 0),
+            tf.equal(tf.cast(target, tf.int64), tf.argmax(logit, 1))
+        ) for target, logit in zip(target_list, logits)]
+
     accuracy = sum(
-        tf.reduce_mean(tf.cast(correct_prediction, tf.float32)) for correct_prediction in correct_predictions
-    ) / len(correct_predictions)
+        tf.reduce_sum(tf.cast(correct_prediction, tf.float32)) for correct_prediction in correct_predictions
+    ) / sum(tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(target, tf.int64), 0), tf.float32)) for target in target_list)
 
     return targets, loss, accuracy
 
@@ -203,6 +208,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
         for epoch in range(epochs):
             count = 0
             for x, y in batches(train_x, train_y, batch_size):
+                if x.shape[0] != batch_size:
+                    continue
                 count += 1
                 loss_value, _, gradient_norm, step = session.run([
                     loss_,
