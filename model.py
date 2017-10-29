@@ -234,8 +234,6 @@ def train_model(data_file='data/sentences.xml', epochs=2):
         for epoch in range(epochs):
             count = 0
             for x, y, y_mask in batches(train_x, train_y, train_mask, batch_size=batch_size):
-                if count > 51:
-                    break
                 if x.shape[0] != batch_size:
                     continue
                 count += 1
