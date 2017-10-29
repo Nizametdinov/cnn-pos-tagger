@@ -97,28 +97,3 @@ class DataReader:
                     uniq_speach_parts.add(speech_part)
             self._uniq_speach_parts = uniq_speach_parts
         return uniq_speach_parts.copy()
-
-
-# SENTENCES_SOURCE = 'data/sentences.xml'
-
-# loader = DataReader(SENTENCES_SOURCE)
-# loader.load()
-
-# from vocab import Vocab
-
-# vocab = Vocab(loader)
-# vocab.load()
-# print(vocab.part_to_index('NOUN'))
-
-# print(loader.get_uniq_speach_parts())
-
-# print('sentences count: ', len(loader.sentences))
-# longest_sentence = loader.get_longest_sentence()
-# print('longest sentence: ', longest_sentence)
-# print('max sentence length: ', len(longest_sentence))
-# longest_word = loader.get_longest_word()
-# print('longest word: ', longest_word)
-# print('longest word chars: ', len(longest_word))
-# uniq_chars = loader.get_uniq_chars()
-# print('uniq_chars count: ', len(uniq_chars))
-# print('uniq_chars: ', uniq_chars)
