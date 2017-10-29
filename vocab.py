@@ -3,6 +3,26 @@ import math
 class Vocab:
     EMPTY_CHAR = ' '
 
+    POS_CODE2HUMAN = {
+        'COMP': 'наречие',
+        'GRND': 'деепричастие',
+        'PRED': 'предикатив',
+        'INTJ': 'междометие',
+        'PRTF': 'причастие',
+        'ADJS': 'краткое прилагательное',
+        'PRTS': 'глагол (сов. форма)',
+        'INFN': 'инфинитив (глагол)',
+        'CONJ': 'союз',
+        'PRCL': 'частицы',
+        'ADVB': 'наречие',
+        'NPRO': 'местоимение',
+        'ADJF': 'прилагательное',
+        'PREP': 'предлог',
+        'VERB': 'глагол',
+        'NOUN': 'существительное'
+    }
+
+
     def __init__(self, data_reader):
         self._data_reader = data_reader
 
@@ -82,6 +102,16 @@ class Vocab:
         if not self._loaded:
             raise BaseException('chars not loaded')
         return self._part2index[speech_part]
+
+    def index_to_speech_part(self, index):
+        if not self._loaded:
+            raise BaseException('chars not loaded')
+
+        return self._index2part[index]
+
+    def index_to_speech_part_human(self, index):
+        pos_code = self.index_to_speech_part(index)
+        return self.POS_CODE2HUMAN[pos_code]
 
     def char_vocab_size(self):
         return len(self._index2char)

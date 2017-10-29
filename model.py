@@ -327,7 +327,7 @@ def evaluate_model():
 
         for sentence, sentence_prediction in zip(sentences, predicted[0]):
             for word, word_prediction in zip(sentence, sentence_prediction):
-                print('word: ', word, ' predicted part of speech: ', vocab._index2part[word_prediction])
+                print('word: ', word, ' predicted part of speech: ', vocab.index_to_speech_part_human(word_prediction))
             print()
 
 
