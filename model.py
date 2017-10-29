@@ -218,7 +218,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
 
         train_x, test_x, train_y, test_y, train_mask, test_mask, train_sentences, test_sentences = \
             train_test_split(input_tensor, target_tensor, target_mask_tensor,
-                             tensor_generator.sentences, random_state=0, train_size=0.5)
+                             tensor_generator.sentences, random_state=0, train_size=0.8)
         print(train_x.shape, train_y.shape, test_x.shape, test_y.shape)
 
         for epoch in range(epochs):
@@ -261,6 +261,17 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
                     if count % 10 == 0:
                         print_classiffication_report(test_y[:200], predicted, vocab)
+        test_loss_value, accuracy_value, predicted = session.run([
+            loss_, accuracy, predictions
+        ], {
+            input_: test_x,
+            targets: test_y,
+            target_mask: test_mask,
+            dropout: 0.
+        })
+        print('Final test loss = %6.8f, test perplexity = %6.8f, test accuracy = %6.8f' %
+              (test_loss_value, np.exp(test_loss_value), accuracy_value))
+        print_classiffication_report(test_y, predicted, vocab)
 
 
 if __name__ == '__main__':
