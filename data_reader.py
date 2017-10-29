@@ -1,14 +1,15 @@
 import xml.etree.ElementTree as etree
+import operator
 
 class DataReader:
-    SKIPPED_SPEACH_PARTS = set(['PNCT', 'NUMB', 'SYMB'])
-    STOP_CHARS_CODES = set(range(ord('a'), ord('z'))).union(set(range(ord('A'), ord('Z'))))
+    SKIPPED_SPEECH_PARTS = set(['PNCT', 'NUMB', 'SYMB', 'LATN', 'ROMN'])
+    STOP_CHARS_CODES = range(ord('a'), ord('z'))
 
     def __init__(self, xml_filename):
         self._xml_filename = xml_filename
         self.sentences = []
-        self._uniq_chars = set()
-        self._uniq_speech_parts = set()
+        self._uniq_chars = {}
+        self._uniq_speech_parts = {}
         self._loaded = False
 
     def _get_tokens(self, xml_filename):
@@ -24,18 +25,20 @@ class DataReader:
 
     def _add_uniq_chars(self, word):
         for c in word:
-            self._uniq_chars.add(c)
+            current_char_count = self._uniq_chars.get(c) or 0
+            self._uniq_chars[c] = current_char_count + 1
 
     def _add_uniq_speech_parts(self, speech_part):
-        self._uniq_speech_parts.add(speech_part)
+        current_parts_count = self._uniq_speech_parts.get(speech_part) or 0
+        self._uniq_speech_parts[speech_part] = current_parts_count + 1
 
     def _get_sentence(self, tokens_entry):
         sentence = []
         for token in tokens_entry:
             speech_part = token.find('.//g').attrib['v']
-            if speech_part in self.SKIPPED_SPEACH_PARTS:
+            if speech_part in self.SKIPPED_SPEECH_PARTS:
                 continue
-            word = token.attrib['text']
+            word = token.attrib['text'].lower()
             if self._word_has_stop_chars(word):
                 raise ValueError('sentence has invalid chars')
 
@@ -62,19 +65,32 @@ class DataReader:
     def get_uniq_chars(self):
         if not self._loaded:
             raise BaseException('data not loaded')
-        return self._uniq_chars.copy()
+
+        return self._uniq_chars.keys()
 
     def get_uniq_speech_parts(self):
         if not self._loaded:
             raise BaseException('data not loaded')
 
-        return self._uniq_speech_parts.copy()
+        return self._uniq_speech_parts.keys()
 
     def get_longest_sentence(self):
         if not self._loaded:
             raise BaseException('data not loaded')
 
         return max(self.sentences, key=lambda sentence: len(sentence))
+
+    def get_chars_freq(self):
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
+        return sorted(self._uniq_chars.items(), key = operator.itemgetter(1))
+
+    def get_speech_parts_freq(self):
+        if not self._loaded:
+            raise BaseException('data not loaded')
+
+        return sorted(self._uniq_speech_parts.items(), key = operator.itemgetter(1))
 
     def get_longest_word(self):
         if not self._loaded:
@@ -90,3 +106,21 @@ class DataReader:
                     max_length = word_len
                     longest_word = word
         return longest_word
+
+if __name__ == '__main__':
+    SENTENCES_SOURCE = 'data/sentences.xml'
+
+    loader = DataReader(SENTENCES_SOURCE)
+    loader.load()
+
+    print('unique chars', loader.get_chars_freq())
+    print('unique speech_parts', loader.get_speech_parts_freq())
+
+    print('sentences count: ', len(loader.sentences))
+    longest_sentence = loader.get_longest_sentence()
+    print('longest sentence: ', longest_sentence)
+    print('max sentence length: ', len(longest_sentence))
+    longest_word = loader.get_longest_word()
+    print('longest word: ', longest_word)
+    print('longest word chars: ', len(longest_word))
+
