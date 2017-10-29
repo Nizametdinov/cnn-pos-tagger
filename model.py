@@ -234,6 +234,8 @@ def train_model(data_file='data/sentences.xml', epochs=2):
         for epoch in range(epochs):
             count = 0
             for x, y, y_mask in batches(train_x, train_y, train_mask, batch_size=batch_size):
+                if count > 51:
+                    break
                 if x.shape[0] != batch_size:
                     continue
                 count += 1
@@ -288,19 +290,16 @@ def train_model(data_file='data/sentences.xml', epochs=2):
         save_model(session)
 
 
-if __name__ == '__main__':
-    # train_model()
-
-    data_file='data/sentences.xml'
+def evaluate_model():
+    global vocab, tensor_generator
+    data_file = 'data/sentences.xml'
     loader = DataReader(data_file)
     loader.load()
     vocab = Vocab(loader)
     vocab.load()
     tensor_generator = TensorGenerator(loader, vocab)
-
     with tf.Session() as session:
-
-        input_, logits, _initial_rnn_state, dropout = model(
+        input_, logits, dropout = model(
             max_words_in_sentence=tensor_generator.max_sentence_length,
             max_word_length=tensor_generator.max_word_length,
             char_vocab_size=vocab.char_vocab_size(),
@@ -319,12 +318,24 @@ if __name__ == '__main__':
 
         print('model restored')
 
-        sentence = [('проходит'), ('проверка'), ('связи')]
-        input_tensors = tensor_generator.tensor_from_sentences([sentence])
+        sentences = [
+            ['проверка', 'связи', 'прошла'],
+            ['глокая', 'куздра', 'штеко', 'будланула', 'бокра', 'и', 'кудрячит', 'бокрёнка'],
+        ]
+        input_tensors = tensor_generator.tensor_from_sentences(sentences)
 
         print(input_tensors)
         predicted = session.run([predictions], {input_: input_tensors, dropout: 0.0})
 
-        print('predicted: ', predicted)
+        for sentence, sentence_prediction in zip(sentences, predicted[0]):
+            for word, word_prediction in zip(sentence, sentence_prediction):
+                print('word: ', word, ' predicted part of speech: ', vocab._index2part[word_prediction])
+            print()
+
+
+if __name__ == '__main__':
+    # train_model()
+
+    evaluate_model()
 
 
