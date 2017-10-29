@@ -130,7 +130,7 @@ def model(
     for output in outputs:
         logits.append(tf.matmul(output, matrix) + bias_term)
 
-    return input_, logits, initial_rnn_state, dropout
+    return input_, logits, dropout
 
 
 def loss(logits, batch_size, max_words_in_sentence):
@@ -197,7 +197,7 @@ def train_model(data_file='data/sentences.xml', epochs=2):
         batch_size = 20
         report_step = 10
 
-        input_, logits, initial_rnn_state, dropout = model(
+        input_, logits, dropout = model(
             batch_size=batch_size,
             max_words_in_sentence=tensor_generator.max_sentence_length,
             max_word_length=tensor_generator.max_word_length,
