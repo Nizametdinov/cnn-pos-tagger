@@ -34,6 +34,24 @@ class TensorGenerator:
                 for k, symbol in enumerate(word):
                     self.chars_tensor[i, j, k] = self._vocab.char_to_index(symbol)
 
+    def tensor_from_sentences(self, sentences):
+        chars_tensor = np.zeros(
+            [
+                len(sentences),
+                self.max_sentence_length,
+                self.max_word_length
+            ],
+            dtype=np.int32
+        )
+
+        for i, sentence in enumerate(sentences):
+            for j, word in enumerate(sentence):
+                word = WORD_START + word + WORD_END
+                for k, symbol in enumerate(word):
+                    chars_tensor[i, j, k] = self._vocab.char_to_index(symbol)
+
+        return chars_tensor
+
 
 if __name__ == '__main__':
     SENTENCES_SOURCE = 'data/sentences.xml'

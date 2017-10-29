@@ -8,6 +8,7 @@ from tensor_generator import TensorGenerator
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
+MODEL_SAVE_PATH = './model/model.ckpt'
 
 def weight_variable(shape):
     initial = tf.truncated_normal(list(map(int, shape)), stddev=0.1)
@@ -81,7 +82,6 @@ def create_rnn_cell(rnn_size, dropout):
 
 
 def model(
-        batch_size,
         max_words_in_sentence,
         max_word_length,
         char_vocab_size,
@@ -183,6 +183,14 @@ def print_classiffication_report(y_true, y_pred, vocab):
     print(classification_report(y_true.flatten(), y_pred.flatten(), target_names=labels, digits=3))
 
 
+def save_model(sess, path = MODEL_SAVE_PATH):
+     saver = tf.train.Saver()
+     saver.save(sess, path)
+
+def restore_model(sess, path = MODEL_SAVE_PATH):
+     saver = tf.train.Saver()
+     saver.restore(sess, path)
+
 def train_model(data_file='data/sentences.xml', epochs=1):
     with tf.Session() as session:
         loader = DataReader(data_file)
@@ -195,7 +203,6 @@ def train_model(data_file='data/sentences.xml', epochs=1):
         report_step = 10
 
         input_, logits, initial_rnn_state, dropout = model(
-            batch_size=batch_size,
             max_words_in_sentence=tensor_generator.max_sentence_length,
             max_word_length=tensor_generator.max_word_length,
             char_vocab_size=vocab.char_vocab_size(),
@@ -261,6 +268,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
                     if count % 10 == 0:
                         print_classiffication_report(test_y[:200], predicted, vocab)
+
         test_loss_value, accuracy_value, predicted = session.run([
             loss_, accuracy, predictions
         ], {
@@ -273,6 +281,46 @@ def train_model(data_file='data/sentences.xml', epochs=1):
               (test_loss_value, np.exp(test_loss_value), accuracy_value))
         print_classiffication_report(test_y, predicted, vocab)
 
+        save_model(session)
+
 
 if __name__ == '__main__':
-    train_model()
+    # train_model()
+
+    data_file='data/sentences.xml'
+    loader = DataReader(data_file)
+    loader.load()
+    vocab = Vocab(loader)
+    vocab.load()
+    tensor_generator = TensorGenerator(loader, vocab)
+
+    with tf.Session() as session:
+
+        input_, logits, _initial_rnn_state, dropout = model(
+            max_words_in_sentence=tensor_generator.max_sentence_length,
+            max_word_length=tensor_generator.max_word_length,
+            char_vocab_size=vocab.char_vocab_size(),
+            num_output_classes=vocab.part_vocab_size()
+        )
+
+        _targets, _target_mask, _loss_, _accuracy, predictions = loss(
+            logits=logits,
+            batch_size=0,
+            max_words_in_sentence=tensor_generator.max_sentence_length
+        )
+
+        print('graph init finished')
+
+        restore_model(session)
+
+        print('model restored')
+
+        sentence = [('проходит'), ('проверка'), ('связи')]
+        input_tensors = tensor_generator.tensor_from_sentences([sentence])
+
+        print(input_tensors)
+        predicted = session.run([predictions], {input_: input_tensors, dropout: 0.0})
+
+        print('predicted: ', predicted)
+
+
