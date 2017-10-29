@@ -27,6 +27,9 @@ class Vocab:
         self._feed_char('{')
         self._feed_char('}')
 
+    def _load_initial_parts(self):
+        self._feed_speach_part('UNKNOWN')
+
     def _load_chars(self):
         uniq_chars = self._data_reader.get_uniq_chars()
         self._load_initial_chars()
@@ -35,6 +38,7 @@ class Vocab:
 
     def _load_speach_parts(self):
         uniq_speach_parts = self._data_reader.get_uniq_speach_parts()
+        self._load_initial_parts()
         for part in sorted(uniq_speach_parts):
             self._feed_speach_part(part)
 
