@@ -5,22 +5,29 @@ from data_reader import DataReader
 from vocab import Vocab
 
 
+WORD_START = '{'
+WORD_END = '}'
+
+
 class TensorGenerator:
     def __init__(self, data_reader, vocab):
         self._data_reader = data_reader
         self._vocab = vocab
         self.sentences = self._data_reader.sentences
-        max_sentence_length = len(self._data_reader.get_longest_sentence())
-        max_word_length = len(self._data_reader.get_longest_word())
-        # import pdb; pdb.set_trace()
-        self.chars_tensor = np.zeros([len(self.sentences), max_sentence_length, max_word_length], dtype=np.int32)
-        self.target_tensor = np.zeros([len(self.sentences), max_sentence_length], dtype=np.int32)
+        self.max_sentence_length = len(self._data_reader.get_longest_sentence())
+        self.max_word_length = len(self._data_reader.get_longest_word()) + 2
+
+        self.chars_tensor = np.zeros(
+            [len(self.sentences), self.max_sentence_length, self.max_word_length], dtype=np.int32)
+        self.target_tensor = np.zeros(
+            [len(self.sentences), self.max_sentence_length], dtype=np.int32)
         self.generate_tensors()
 
     def generate_tensors(self):
         for i, sentence in enumerate(self.sentences):
             for j, (word, target_class) in enumerate(sentence):
                 self.target_tensor[i, j] = self._vocab.part_to_index(target_class)  # target_class
+                word = WORD_START + word + WORD_END
                 for k, symbol in enumerate(word):
                     self.chars_tensor[i, j, k] = self._vocab.char_to_index(symbol)
 
