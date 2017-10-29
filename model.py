@@ -112,14 +112,17 @@ def model(
     highway_output = highway(cnn_output, cnn_output.shape[-1], num_layers=num_highway_layers)
 
     dropout = tf.placeholder(tf.float32)
-    cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
-    initial_rnn_state = cell.zero_state(tf.shape(input_)[0], dtype=tf.float32)
+    fw_cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
+    bw_cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
+    # TODO: use trainable initial state
+    # initial_rnn_state = fw_cell.zero_state(tf.shape(input_)[0], dtype=tf.float32)
 
     highway_output = tf.reshape(highway_output, [-1, max_words_in_sentence, int(highway_output.shape[-1])])
     rnn_input = [tf.squeeze(x, [1]) for x in tf.split(highway_output, max_words_in_sentence, 1)]
 
-    outputs, final_rnn_state = tf.contrib.rnn.static_rnn(cell, rnn_input,
-                                                         initial_state=initial_rnn_state, dtype=tf.float32)
+    outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
+        fw_cell, bw_cell, rnn_input, dtype=tf.float32
+    )
 
     logits = []
     matrix = weight_variable(shape=[outputs[0].shape[-1], num_output_classes])
@@ -127,7 +130,7 @@ def model(
     for output in outputs:
         logits.append(tf.matmul(output, matrix) + bias_term)
 
-    return input_, logits, initial_rnn_state, dropout
+    return input_, logits, dropout
 
 
 def loss(logits, batch_size, max_words_in_sentence):
@@ -191,7 +194,7 @@ def restore_model(sess, path = MODEL_SAVE_PATH):
      saver = tf.train.Saver()
      saver.restore(sess, path)
 
-def train_model(data_file='data/sentences.xml', epochs=1):
+def train_model(data_file='data/sentences.xml', epochs=2):
     with tf.Session() as session:
         loader = DataReader(data_file)
         loader.load()
@@ -202,7 +205,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
         batch_size = 20
         report_step = 10
 
-        input_, logits, initial_rnn_state, dropout = model(
+        input_, logits, dropout = model(
             max_words_in_sentence=tensor_generator.max_sentence_length,
             max_word_length=tensor_generator.max_word_length,
             char_vocab_size=vocab.char_vocab_size(),
@@ -257,7 +260,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     })
                     elapsed = time.time() - start_time
                     print(
-                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f elapsed = %.4fs, grad.norm=%6.8f' % (
+                        '\n%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f elapsed = %.4fs, grad.norm=%6.8f' % (
                             step,
                             epoch, count,
                             train_x.shape[0]/batch_size,
@@ -268,7 +271,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
                     if count % 10 == 0:
                         print_classiffication_report(test_y[:200], predicted, vocab)
-
+                else:
+                    print('.', end='', flush=True)
         test_loss_value, accuracy_value, predicted = session.run([
             loss_, accuracy, predictions
         ], {
