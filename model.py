@@ -5,6 +5,7 @@ import numpy as np
 from data_reader import DataReader
 from vocab import Vocab
 from tensor_generator import TensorGenerator
+from sklearn.model_selection import train_test_split
 
 
 def weight_variable(shape):
@@ -159,6 +160,11 @@ def train(loss, learning_rate=1.0, max_grad_norm=5.0):
     return train_op, learning_rate, global_step, global_norm
 
 
+def batches(x, y, batch_size):
+    for i in range(0, len(x), batch_size):
+        yield x[i:i+batch_size], y[i:i+batch_size]
+
+
 def train_model(data_file='data/sentences.xml', epochs=1):
     with tf.Session() as session:
         loader = DataReader(data_file)
@@ -189,10 +195,14 @@ def train_model(data_file='data/sentences.xml', epochs=1):
 
         input_tensor = tensor_generator.chars_tensor
         target_tensor = tensor_generator.target_tensor
-        batches = [(input_tensor[:20], target_tensor[:20])]
+
+        train_x, test_x, train_y, test_y = \
+            train_test_split(input_tensor, target_tensor, random_state=0, train_size=0.5)
+        print(train_x.shape, train_y.shape, test_x.shape, test_y.shape)
+
         for epoch in range(epochs):
             count = 0
-            for x, y in batches:
+            for x, y in batches(train_x, train_y, batch_size):
                 count += 1
                 loss_value, _, gradient_norm, step = session.run([
                     loss_,
@@ -207,8 +217,8 @@ def train_model(data_file='data/sentences.xml', epochs=1):
 
                 if count % 1 == 0:
                     accuracy_value = accuracy.eval({
-                        input_: input_tensor[100:120],
-                        targets: target_tensor[100:120],
+                        input_: test_x[0:batch_size],
+                        targets: test_y[0:batch_size],
                         dropout: 0.
                     })
                     elapsed = time.time() - start_time
@@ -216,7 +226,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                         '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f, accurary=%6.8f' % (
                             step,
                             epoch, count,
-                            len(batches),
+                            train_x.shape[0]/batch_size,
                             loss_value,
                             np.exp(loss_value),
                             elapsed,
