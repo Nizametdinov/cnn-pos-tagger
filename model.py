@@ -115,13 +115,13 @@ def model(
     fw_cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
     bw_cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
     # TODO: use trainable initial state
-    initial_rnn_state = fw_cell.zero_state(tf.shape(input_)[0], dtype=tf.float32)
+    # initial_rnn_state = fw_cell.zero_state(tf.shape(input_)[0], dtype=tf.float32)
 
     highway_output = tf.reshape(highway_output, [-1, max_words_in_sentence, int(highway_output.shape[-1])])
     rnn_input = [tf.squeeze(x, [1]) for x in tf.split(highway_output, max_words_in_sentence, 1)]
 
     outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
-        fw_cell, bw_cell, rnn_input, initial_state=initial_rnn_state, dtype=tf.float32
+        fw_cell, bw_cell, rnn_input, dtype=tf.float32
     )
 
     logits = []
