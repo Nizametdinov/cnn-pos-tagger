@@ -179,6 +179,7 @@ def train_model(data_file='data/sentences.xml', epochs=1):
         tensor_generator = TensorGenerator(loader, vocab)
 
         batch_size = 20
+        report_step = 1
 
         input_, logits, initial_rnn_state, dropout = model(
             batch_size=batch_size,
@@ -222,23 +223,25 @@ def train_model(data_file='data/sentences.xml', epochs=1):
                     dropout: 0.5
                 })
 
-                if count % 1 == 0:
-                    accuracy_value = accuracy.eval({
+                if count % report_step == 0:
+                    test_loss_value, accuracy_value = session.run([
+                        loss_, accuracy
+                    ], {
                         input_: test_x[0:batch_size],
                         targets: test_y[0:batch_size],
                         dropout: 0.
                     })
                     elapsed = time.time() - start_time
                     print(
-                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f, accurary=%6.8f' % (
+                        '%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f secs/batch = %.4fs, grad.norm=%6.8f' % (
                             step,
                             epoch, count,
                             train_x.shape[0]/batch_size,
                             loss_value,
                             np.exp(loss_value),
                             elapsed,
-                            gradient_norm,
-                            accuracy_value))
+                            gradient_norm))
+                    print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
 
 
 if __name__ == '__main__':
