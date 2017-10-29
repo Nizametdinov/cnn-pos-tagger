@@ -2,14 +2,18 @@ import tensorflow as tf
 import time
 import numpy as np
 
+from data_reader import DataReader
+from vocab import Vocab
+from tensor_generator import TensorGenerator
+
 
 def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev=0.1)
+    initial = tf.truncated_normal(list(map(int, shape)), stddev=0.1)
     return tf.Variable(initial)
 
 
 def bias_variable(shape):
-    initial = tf.constant(0.1, shape=shape)
+    initial = tf.constant(0.1, shape=list(map(int, shape)))
     return tf.Variable(initial)
 
 
@@ -69,28 +73,28 @@ def linear(input_, output_size, scope=None):
 
 def create_rnn_cell(rnn_size, dropout):
     cell = tf.contrib.rnn.BasicLSTMCell(rnn_size, state_is_tuple=True, forget_bias=0.0, reuse=False)
-    if dropout > 0.0:
+    if dropout is not None:
         cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=1. - dropout)
     return cell
 
 
 def model(
-        batch_size=20,
-        max_words_in_sentence=50,
-        max_word_length=30,
-        char_vocab_size=100,
-        num_output_classes=20,
-        embedding_size=16,
-        dropout=0.5
+        batch_size,
+        max_words_in_sentence,
+        max_word_length,
+        char_vocab_size,
+        num_output_classes,
+        embedding_size=16
 ):
     kernel_widths = [1, 2, 3, 4, 5, 6, 7]
     kernel_features = [25 * w for w in kernel_widths]
     num_highway_layers = 2
     rnn_size = 650
 
-    input_ = tf.placeholder(tf.int32, [-1, max_words_in_sentence, max_word_length])
+    input_ = tf.placeholder(tf.int32, [None, max_words_in_sentence, max_word_length])
 
-    embeddings = tf.truncated_normal([char_vocab_size, embedding_size])
+    initial_embeddings = tf.truncated_normal([char_vocab_size, embedding_size])
+    embeddings = tf.Variable(initial_embeddings, name='embeddings')
     cnn_input = tf.nn.embedding_lookup(embeddings, input_)
 
     cnn_input = tf.reshape(cnn_input, [-1, 1, max_word_length, embedding_size])
@@ -99,16 +103,17 @@ def model(
     for kernel_width, kernel_feature_size in zip(kernel_widths, kernel_features):
         reduced_size = max_word_length - kernel_width + 1
         conv = conv2d(cnn_input, kernel_feature_size, 1, kernel_width)
-        pool = tf.nn.max_pool(conv, [1, reduced_size], strides=[1, 1, 1, 1], padding='VALID')
+        pool = tf.nn.max_pool(conv, [1, 1, reduced_size, 1], strides=[1, 1, 1, 1], padding='VALID')
         cnn_output.append(tf.squeeze(pool, [1, 2]))
 
     cnn_output = tf.concat(cnn_output, 1)
     highway_output = highway(cnn_output, cnn_output.shape[-1], num_layers=num_highway_layers)
 
+    dropout = tf.placeholder(tf.float32)
     cell = create_rnn_cell(rnn_size=rnn_size, dropout=dropout)
     initial_rnn_state = cell.zero_state(batch_size, dtype=tf.float32)
 
-    highway_output = tf.reshape(highway_output, [batch_size, max_words_in_sentence, -1])
+    highway_output = tf.reshape(highway_output, [batch_size, max_words_in_sentence, int(highway_output.shape[-1])])
     rnn_input = [tf.squeeze(x, [1]) for x in tf.split(highway_output, max_words_in_sentence, 1)]
 
     outputs, final_rnn_state = tf.contrib.rnn.static_rnn(cell, rnn_input,
@@ -120,11 +125,11 @@ def model(
     for output in outputs:
         logits.append(tf.matmul(output, matrix) + bias_term)
 
-    return input_, logits, initial_rnn_state
+    return input_, logits, initial_rnn_state, dropout
 
 
 def loss(logits, batch_size, max_words_in_sentence):
-    targets = tf.placeholder(tf.int16, [batch_size, max_words_in_sentence])
+    targets = tf.placeholder(tf.int32, [batch_size, max_words_in_sentence])
     target_list = [tf.squeeze(x, [1]) for x in tf.split(targets, max_words_in_sentence, 1)]
     loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list))
     return targets, loss
@@ -135,6 +140,7 @@ def train(loss, learning_rate=1.0, max_grad_norm=5.0):
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
     # SGD learning parameter
+    # TODO: why not placeholder?
     learning_rate = tf.Variable(learning_rate, name='learning_rate', trainable=False)
 
     # collect all trainable variables
@@ -147,15 +153,38 @@ def train(loss, learning_rate=1.0, max_grad_norm=5.0):
     return train_op, learning_rate, global_step, global_norm
 
 
-def train_model(epochs=1):
+def train_model(data_file='data/sentences.xml', epochs=1):
     with tf.Session() as session:
-        input_, logits, initial_rnn_state = model()
-        targets, loss_ = loss(logits=logits, batch_size=20, max_words_in_sentence=50)  # TODO rename variable
+        loader = DataReader(data_file)
+        loader.load()
+        vocab = Vocab(loader)
+        vocab.load()
+        tensor_generator = TensorGenerator(loader, vocab)
+
+        batch_size = 20
+
+        input_, logits, initial_rnn_state, dropout = model(
+            batch_size=batch_size,
+            max_words_in_sentence=tensor_generator.max_sentence_length,
+            max_word_length=tensor_generator.max_word_length,
+            char_vocab_size=vocab.char_vocab_size(),
+            num_output_classes=vocab.part_vocab_size()
+        )
+        # TODO: rename variable loss_
+        targets, loss_ = loss(
+            logits=logits,
+            batch_size=batch_size,
+            max_words_in_sentence=tensor_generator.max_sentence_length
+        )
         train_op, learning_rate, global_step, global_norm = train(loss=loss_)
 
         start_time = time.time()
+        session.run(tf.global_variables_initializer())
+
+        input_tensor = tensor_generator.chars_tensor
+        target_tensor = tensor_generator.target_tensor
+        batches = [(input_tensor[:20], target_tensor[:20])]
         for epoch in range(epochs):
-            batches = []
             count = 0
             for x, y in batches:
                 count += 1
@@ -167,6 +196,7 @@ def train_model(epochs=1):
                 ], {
                     input_: x,
                     targets: y,
+                    dropout: 0.5
                 })
 
                 if count % 1 == 0:
@@ -180,3 +210,7 @@ def train_model(epochs=1):
                             np.exp(loss_value),
                             elapsed,
                             gradient_norm))
+
+
+if __name__ == '__main__':
+    train_model()

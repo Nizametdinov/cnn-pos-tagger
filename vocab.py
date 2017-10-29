@@ -52,3 +52,9 @@ class Vocab:
         if not self._loaded:
             raise BaseException('chars not loaded')
         return self._part2index[speach_part]
+
+    def char_vocab_size(self):
+        return len(self._index2char)
+
+    def part_vocab_size(self):
+        return len(self._index2part)
