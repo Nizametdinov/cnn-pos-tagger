@@ -54,9 +54,9 @@ class TensorGenerator:
 
 
 if __name__ == '__main__':
-    SENTENCES_SOURCE = 'data/sentences.xml'
+    from download_data import OPEN_CORPORA_DEST_FILE
 
-    loader = DataReader(SENTENCES_SOURCE)
+    loader = DataReader(OPEN_CORPORA_DEST_FILE)
     loader.load()
     vocab = Vocab(loader)
     vocab.load()

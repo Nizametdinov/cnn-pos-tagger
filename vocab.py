@@ -1,5 +1,6 @@
 import math
 
+
 class Vocab:
     EMPTY_CHAR = ' '
 
@@ -21,7 +22,6 @@ class Vocab:
         'VERB': 'глагол',
         'NOUN': 'существительное'
     }
-
 
     def __init__(self, data_reader):
         self._data_reader = data_reader
@@ -119,12 +119,13 @@ class Vocab:
     def part_vocab_size(self):
         return len(self._index2part)
 
+
 if __name__ == '__main__':
     # debug
     from data_reader import DataReader
-    SENTENCES_SOURCE = 'data/sentences.xml'
+    from download_data import OPEN_CORPORA_DEST_FILE
 
-    data_reader = DataReader(SENTENCES_SOURCE)
+    data_reader = DataReader(OPEN_CORPORA_DEST_FILE)
     data_reader.load()
 
     vocab = Vocab(data_reader)

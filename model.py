@@ -5,10 +5,12 @@ import numpy as np
 from data_reader import DataReader
 from vocab import Vocab
 from tensor_generator import TensorGenerator
+from download_data import OPEN_CORPORA_DEST_FILE
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
 MODEL_SAVE_PATH = './model/model.ckpt'
+
 
 def weight_variable(shape):
     initial = tf.truncated_normal(list(map(int, shape)), stddev=0.1)
@@ -190,11 +192,13 @@ def save_model(sess, path = MODEL_SAVE_PATH):
      saver = tf.train.Saver()
      saver.save(sess, path)
 
+
 def restore_model(sess, path = MODEL_SAVE_PATH):
      saver = tf.train.Saver()
      saver.restore(sess, path)
 
-def train_model(data_file='data/sentences.xml', epochs=2):
+
+def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2):
     with tf.Session() as session:
         loader = DataReader(data_file)
         loader.load()
@@ -290,7 +294,7 @@ def train_model(data_file='data/sentences.xml', epochs=2):
 
 def evaluate_model():
     global vocab, tensor_generator
-    data_file = 'data/sentences.xml'
+    data_file = OPEN_CORPORA_DEST_FILE
     loader = DataReader(data_file)
     loader.load()
     vocab = Vocab(loader)
@@ -332,8 +336,6 @@ def evaluate_model():
 
 
 if __name__ == '__main__':
-    # train_model()
+    train_model()
 
-    evaluate_model()
-
-
+    # evaluate_model()

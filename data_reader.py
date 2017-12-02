@@ -1,8 +1,9 @@
 import xml.etree.ElementTree as etree
 import operator
 
+
 class DataReader:
-    SKIPPED_SPEECH_PARTS = set(['PNCT', 'NUMB', 'SYMB', 'LATN', 'ROMN'])
+    SKIPPED_SPEECH_PARTS = {'PNCT', 'NUMB', 'SYMB', 'LATN', 'ROMN'}
     STOP_CHARS_CODES = range(ord('a'), ord('z'))
 
     def __init__(self, xml_filename):
@@ -107,10 +108,11 @@ class DataReader:
                     longest_word = word
         return longest_word
 
-if __name__ == '__main__':
-    SENTENCES_SOURCE = 'data/sentences.xml'
 
-    loader = DataReader(SENTENCES_SOURCE)
+if __name__ == '__main__':
+    from download_data import OPEN_CORPORA_DEST_FILE
+
+    loader = DataReader(OPEN_CORPORA_DEST_FILE)
     loader.load()
 
     print('unique chars', loader.get_chars_freq())
@@ -123,4 +125,3 @@ if __name__ == '__main__':
     longest_word = loader.get_longest_word()
     print('longest word: ', longest_word)
     print('longest word chars: ', len(longest_word))
-

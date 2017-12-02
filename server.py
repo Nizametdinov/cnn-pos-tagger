@@ -3,11 +3,15 @@ import json
 import os
 
 from model import *
+from data_reader import DataReader
+from vocab import Vocab
+from tensor_generator import TensorGenerator
+from download_data import OPEN_CORPORA_DEST_FILE
+
 
 def init():
     global loader, vocab, tensor_generator
-    data_file = 'data/sentences.xml'
-    loader = DataReader(data_file)
+    loader = DataReader(OPEN_CORPORA_DEST_FILE)
     loader.load()
     vocab = Vocab(loader)
     vocab.load()
