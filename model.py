@@ -1,6 +1,7 @@
 import tensorflow as tf
 import time
 import numpy as np
+import logging
 
 from data_reader import DataReader
 from vocab import Vocab
@@ -124,7 +125,7 @@ class CharCnnLstm(object):
         logits = self._rnn_logits(rnn_outputs)
         self._loss(logits)
 
-    def init_for_training(self, learning_rate=0.5, max_grad_norm=5.0):
+    def init_for_training(self, learning_rate=0.01, max_grad_norm=5.0):
         self.init_for_evaluation()
 
         self.learning_rate = tf.Variable(learning_rate, name='learning_rate', trainable=False)
@@ -143,7 +144,7 @@ class CharCnnLstm(object):
         latest_checkpoint = tf.train.latest_checkpoint(model_dir)
         if latest_checkpoint:
             self.saver().restore(session, latest_checkpoint)
-            print("model has been restored from", latest_checkpoint)
+            logging.info("model has been restored from: %s" % latest_checkpoint)
         else:
             session.run(tf.global_variables_initializer())
 
@@ -211,12 +212,12 @@ def batches(*args, batch_size=20):
         yield [x[i:i+batch_size] for x in args]
 
 
-def print_classiffication_report(y_true, y_pred, vocab):
+def classiffication_report_with_labels(y_true, y_pred, vocab):
     labels = np.array(vocab._index2part)[np.unique([y_true, y_pred])]
-    print(classification_report(y_true.flatten(), y_pred.flatten(), target_names=labels, digits=3))
+    return classification_report(y_true.flatten(), y_pred.flatten(), target_names=labels, digits=3)
 
 
-def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2):
+def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLogger()):
     loader = DataReader(data_file)
     loader.load()
     vocab = Vocab(loader)
@@ -234,7 +235,7 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2):
             char_vocab_size=vocab.char_vocab_size(),
             num_output_classes=vocab.part_vocab_size()
         )
-        model.init_for_training()
+        model.init_for_training(learning_rate=0.001)
         model.restore_latest_or_init(session, MODEL_SAVE_PATH)
 
         start_time = time.time()
@@ -247,13 +248,13 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2):
         train_x, test_x, train_y, test_y, train_mask, test_mask, train_sentences, test_sentences = \
             train_test_split(input_tensor, target_tensor, target_mask_tensor,
                              tensor_generator.sentences, random_state=0, train_size=0.8)
-        print(train_x.shape, train_y.shape, test_x.shape, test_y.shape)
+        logger.info('train/test shapes: %s, %s / %s, %s' % (train_x.shape, train_y.shape, test_x.shape, test_y.shape))
 
         for epoch in range(epochs):
             count = 0
             for x, y, y_mask in batches(train_x, train_y, train_mask, batch_size=batch_size):
-                if x.shape[0] != batch_size:
-                    continue
+                # if x.shape[0] != batch_size:
+                #     continue
                 count += 1
                 loss_value, _, gradient_norm, step = session.run([
                     model.loss,
@@ -276,26 +277,21 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2):
                         model.target_mask: test_mask[:200],
                         model.lstm_dropout: 0.
                     })
-                    elapsed = time.time() - start_time
-                    print(
-                        '\n%6d: %d [%5d/%5d], train_loss/perplexity = %6.8f/%6.7f elapsed = %.4fs, grad.norm=%6.8f' % (
-                            step,
-                            epoch, count,
-                            train_x.shape[0]/batch_size,
-                            loss_value,
-                            np.exp(loss_value),
-                            elapsed,
-                            gradient_norm))
-                    print('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
-                    if count % 10 == 0:
-                        print_classiffication_report(test_y[:200], predicted, vocab)
+                    logging.info('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
+                    logging.debug('\n' + classiffication_report_with_labels(test_y[:200], predicted, vocab))
+                    log_level = logging.INFO
                 else:
-                    print('.', end='', flush=True)
+                    log_level = logging.DEBUG
+                logging.log(log_level, '%6d: %d [%5d/%5d], train_loss = %6.8f elapsed = %.4fs, grad.norm=%6.8f' % (
+                            step, epoch, count, train_x.shape[0] / batch_size,
+                            loss_value,
+                            time.time() - start_time,
+                            gradient_norm))
                 if count % save_step == 0:
-                    print('Saving model...')
+                    logging.info('Saving model...')
                     model.save_model(session, MODEL_FILE_NAME)
 
-            print('Saving model...')
+            logging.info('Saving model...')
             model.save_model(session, MODEL_FILE_NAME)
         test_loss_value, accuracy_value, predicted = session.run([
             model.loss, model.accuracy, model.predictions
@@ -305,9 +301,8 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2):
             model.target_mask: test_mask,
             model.lstm_dropout: 0.
         })
-        print('Final test loss = %6.8f, test perplexity = %6.8f, test accuracy = %6.8f' %
-              (test_loss_value, np.exp(test_loss_value), accuracy_value))
-        print_classiffication_report(test_y, predicted, vocab)
+        logger.info('Final test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
+        logging.info('\n' + classiffication_report_with_labels(test_y, predicted, vocab))
 
 
 def evaluate_model():
@@ -332,6 +327,7 @@ def evaluate_model():
         sentences = [
             ['проверка', 'связи', 'прошла'],
             ['глокая', 'куздра', 'штеко', 'будланула', 'бокра', 'и', 'кудрячит', 'бокрёнка'],
+            ['эти', 'типы', 'стали', 'есть', 'в', 'на складе'],
         ]
         input_tensors = tensor_generator.tensor_from_sentences(sentences)
 
@@ -345,6 +341,21 @@ def evaluate_model():
 
 
 if __name__ == '__main__':
-    train_model()
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    file_handler = logging.FileHandler('log/training.log', encoding='UTF-8')
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.INFO)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+    train_model(logger=logger)
 
     # evaluate_model()
