@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow.contrib.slim as slim
 import time
 import numpy as np
 import logging
@@ -14,14 +15,6 @@ MODEL_SAVE_PATH = './model'
 MODEL_FILE_NAME = './model/model.ckpt'
 
 
-def conv2d(input_, output_dim, k_h, k_w, scope):
-    with tf.variable_scope(scope):
-        w = tf.get_variable('kernel', [k_h, k_w, input_.get_shape()[-1], output_dim],
-                            initializer=tf.contrib.layers.xavier_initializer_conv2d())
-        b = tf.get_variable('bias', [output_dim], initializer=tf.zeros_initializer())
-    return tf.nn.conv2d(input_, w, strides=[1, 1, 1, 1], padding='VALID') + b
-
-
 def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'):
     """
     Highway Network (cf. http://arxiv.org/abs/1505.00387).
@@ -32,43 +25,14 @@ def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'
 
     with tf.variable_scope(scope):
         for idx in range(num_layers):
-            g = f(linear(input_, size, scope='highway_lin_%d' % idx))
+            g = f(tf.layers.dense(input_, size))
 
-            t = tf.sigmoid(linear(input_, size, scope='highway_gate_%d' % idx) + bias)
+            t = tf.sigmoid(tf.layers.dense(input_, size) + bias)
 
             output = t * g + (1. - t) * input_
             input_ = output
 
     return output
-
-
-def linear(input_, output_size, scope=None):
-    """
-    Linear map: output[k] = sum_i(Matrix[k, i] * args[i] ) + Bias[k]
-    Args:
-        input_: a tensor or a list of 2D, batch x n, Tensors.
-    output_size: int, second dimension of W[i].
-    scope: VariableScope for the created subgraph; defaults to "Linear".
-    Returns:
-        A 2D Tensor with shape [batch x output_size] equal to
-        sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
-    Raises:
-        ValueError: if some of the arguments has unspecified or wrong shape.
-    """
-
-    shape = input_.get_shape().as_list()
-    if len(shape) != 2:
-        raise ValueError("Linear is expecting 2D arguments: %s" % str(shape))
-    if not shape[1]:
-        raise ValueError("Linear expects shape[1] of arguments: %s" % str(shape))
-    input_size = shape[1]
-
-    with tf.variable_scope(scope):
-        matrix = tf.get_variable("matrix", [output_size, input_size], dtype=input_.dtype,
-                                 initializer=tf.contrib.layers.xavier_initializer())
-        bias_term = tf.get_variable("bias", [output_size], dtype=input_.dtype, initializer=tf.zeros_initializer())
-
-    return tf.matmul(input_, matrix) + bias_term
 
 
 def lstm_cell_with_dropout(rnn_size, dropout):
@@ -150,14 +114,17 @@ class CharCnnLstm(object):
 
     def _char_cnn(self, cnn_input):
         with tf.variable_scope('char_cnn'):
-            cnn_input = tf.reshape(cnn_input, [-1, 1, self.max_word_length, self.embedding_size])
+            cnn_input = tf.reshape(cnn_input, [-1, self.max_word_length, self.embedding_size])
             cnn_output = []
-            for i, (kernel_width, kernel_feature_size) in enumerate(zip(self.kernel_widths, self.kernel_features)):
+            for i, (kernel_width, number_of_features) in enumerate(zip(self.kernel_widths, self.kernel_features)):
                 reduced_size = self.max_word_length - kernel_width + 1
-                conv = conv2d(cnn_input, kernel_feature_size, 1, kernel_width, scope='conv_%d' % i)
-                pool = tf.nn.max_pool(conv, [1, 1, reduced_size, 1], strides=[1, 1, 1, 1], padding='VALID')
-                cnn_output.append(tf.squeeze(pool, [1, 2]))
+                conv = tf.layers.conv1d(cnn_input, number_of_features, kernel_width, padding='valid')
+                # conv.shape => [batch_size * max_words_in_sentence, reduced_size, number_of_features]
+                pool = tf.layers.max_pooling1d(conv, reduced_size, strides=1, padding='valid')
+                # pool.shape => [batch_size * max_words_in_sentence, 1, number_of_features]
+                cnn_output.append(tf.squeeze(pool, 1))
             cnn_output = tf.concat(cnn_output, 1)
+            # cnn_output.shape => [batch_size * max_words_in_sentence, sum(self.kernel_features)]
         return cnn_output
 
     def _lstm(self, lstm_input):
