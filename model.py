@@ -30,7 +30,8 @@ def lstm_cell_with_dropout(rnn_size, dropout):
 
 
 class CharCnnLstm(object):
-    def __init__(self, max_words_in_sentence, max_word_length, char_vocab_size, num_output_classes):
+    def __init__(self, max_words_in_sentence, max_word_length, char_vocab_size, num_output_classes,
+                 input_tensor=None, target_tensor=None, target_mask_tensor=None):
         self.max_words_in_sentence = max_words_in_sentence
         self.max_word_length = max_word_length
         self.char_vocab_size = char_vocab_size
@@ -42,9 +43,14 @@ class CharCnnLstm(object):
         self.num_highway_layers = 2
         self.rnn_size = 650
 
-        self.input = tf.placeholder(tf.int32, [None, self.max_words_in_sentence, self.max_word_length])
-        self.targets = tf.placeholder(tf.int32, [None, self.max_words_in_sentence], name='targets')
-        self.target_mask = tf.placeholder(tf.float32, [None, self.max_words_in_sentence], name='target_mask')
+        if input_tensor is not None:
+            self.input = input_tensor
+            self.targets = target_tensor
+            self.target_mask = target_mask_tensor
+        else:
+            self.input = tf.placeholder(tf.int32, [None, self.max_words_in_sentence, self.max_word_length])
+            self.targets = tf.placeholder(tf.int32, [None, self.max_words_in_sentence], name='targets')
+            self.target_mask = tf.placeholder(tf.float32, [None, self.max_words_in_sentence], name='target_mask')
         self.lstm_dropout = tf.placeholder(tf.float32)
 
         self.loss = None
@@ -70,10 +76,12 @@ class CharCnnLstm(object):
         cnn_input = tf.nn.embedding_lookup(embeddings, self.input)
 
         cnn_output = self._char_cnn(cnn_input)
+        # cnn_output.shape => [batch_size * max_words_in_sentence, sum(self.kernel_features)]
         highway_output = highway(cnn_output, cnn_output.shape[-1], num_layers=self.num_highway_layers)
-        highway_output = tf.reshape(highway_output, [-1, self.max_words_in_sentence, int(highway_output.shape[-1])])
-        rnn_outputs = self._lstm(highway_output)
-        logits = self._rnn_logits(rnn_outputs)
+        highway_output = tf.reshape(highway_output, [-1, tf.shape(self.input)[1], int(highway_output.shape[-1])])
+        rnn_output = self._lstm(highway_output)
+        # rnn_output.shape = [batch_size, max_words_in_sentence, rnn_size * 2]
+        logits = tf.layers.dense(rnn_output, self.num_output_classes, activation=None)
         self._loss(logits)
 
     def init_for_training(self, learning_rate=0.01, max_grad_norm=5.0):
@@ -119,43 +127,20 @@ class CharCnnLstm(object):
             fw_cell = lstm_cell_with_dropout(rnn_size=self.rnn_size, dropout=self.lstm_dropout)
             bw_cell = lstm_cell_with_dropout(rnn_size=self.rnn_size, dropout=self.lstm_dropout)
 
-        rnn_input = [tf.squeeze(x, [1]) for x in tf.split(lstm_input, self.max_words_in_sentence, 1)]
-
-        outputs, _, _ = tf.nn.static_bidirectional_rnn(
-            fw_cell, bw_cell, rnn_input, dtype=tf.float32
-        )
-        return outputs
-
-    def _rnn_logits(self, rnn_outputs):
-        logits = []
-        with tf.variable_scope('softmax'):
-            matrix = tf.get_variable('matrix', [rnn_outputs[0].shape[-1], self.num_output_classes],
-                                     dtype=rnn_outputs[0].dtype,
-                                     initializer=tf.contrib.layers.xavier_initializer())
-            bias = tf.get_variable('bias', [self.num_output_classes], dtype=rnn_outputs[0].dtype,
-                                   initializer=tf.zeros_initializer())
-        for output in rnn_outputs:
-            logits.append(tf.matmul(output, matrix) + bias)
-        return logits
+        outputs, _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, lstm_input, dtype=tf.float32)
+        return tf.concat(outputs, 2)
 
     def _loss(self, logits):
-        target_list = [tf.squeeze(x, [1]) for x in tf.split(self.targets, self.max_words_in_sentence, 1)]
-        target_mask_list = [tf.squeeze(x, [1]) for x in tf.split(self.target_mask, self.max_words_in_sentence, 1)]
-
         self.loss = tf.reduce_mean(
-            tf.multiply(target_mask_list,
-                        tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=target_list)))
+            tf.multiply(self.target_mask,
+                        tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.targets)))
 
-        self.predictions = tf.concat([tf.reshape(tf.argmax(logit, 1), [-1, 1]) for logit in logits], 1)
+        self.predictions = tf.argmax(logits, 2)
 
-        correct_predictions = [
-            tf.logical_and(
-                tf.not_equal(tf.cast(target, tf.int64), 0),
-                tf.equal(tf.cast(target, tf.int64), tf.argmax(logit, 1))
-            ) for target, logit in zip(target_list, logits)]
-
-        self.accuracy = sum(
-            tf.reduce_sum(tf.cast(correct_prediction, tf.float32)) for correct_prediction in correct_predictions
-        ) / sum(
-            tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(target, tf.int64), 0), tf.float32)) for target in target_list
+        correct_predictions = tf.logical_and(
+            tf.not_equal(tf.cast(self.targets, tf.int64), 0),
+            tf.equal(tf.cast(self.targets, tf.int64), self.predictions)
         )
+
+        self.accuracy = tf.reduce_sum(tf.cast(correct_predictions, tf.float32)) / (
+            tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(self.targets, tf.int64), 0), tf.float32)))
