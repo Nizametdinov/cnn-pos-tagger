@@ -18,14 +18,47 @@ MODEL_SAVE_PATH = './model'
 MODEL_FILE_NAME = './model/model.ckpt'
 
 
-def batches(*args, batch_size=20):
-    for i in range(0, len(args[0]), batch_size):
-        yield [x[i:i+batch_size] for x in args]
-
-
 def classification_report_with_labels(y_true, y_pred, vocab):
     labels = np.array(vocab._index2part)[np.unique([y_true, y_pred])]
     return classification_report(y_true.flatten(), y_pred.flatten(), target_names=labels, digits=3)
+
+
+def init_datasets(loader, vocab, logger, batch_size, val_batch_size=100):
+    max_word_length = len(loader.get_longest_word()) + 2
+
+    def make_generator(sentences):
+        def data_generator():
+            WORD_START = '{'
+            WORD_END = '}'
+            for sentence in sentences:
+                targets = []
+                mask = [1.] * len(sentence)
+                char_tensor = np.zeros((len(sentence), max_word_length))
+                for j, (word, target_class) in enumerate(sentence):
+                    targets.append(vocab.part_to_index(target_class))
+                    word = WORD_START + word + WORD_END
+                    for k, char in enumerate(word):
+                        char_tensor[j, k] = vocab.char_to_index(char)
+                yield char_tensor, targets, mask
+        return data_generator
+
+    train_sentences, val_sentences = train_test_split(loader.sentences, random_state=0, train_size=0.8)
+    nb_train_batches = int(np.ceil(len(train_sentences) / batch_size))
+    logger.info('train/validation set size: %d / %d' % (len(train_sentences), len(val_sentences)))
+
+    data_types = tf.int32, tf.int64, tf.float32
+    data_shapes = tf.TensorShape([None, max_word_length]), tf.TensorShape([None]), tf.TensorShape([None])
+    padded_shapes = ([None, max_word_length], [None], [None])
+
+    train_dataset = tf.data.Dataset.from_generator(
+        make_generator(train_sentences), data_types, data_shapes
+    ).padded_batch(batch_size, padded_shapes)
+
+    val_dataset = tf.data.Dataset.from_generator(
+        make_generator(val_sentences), data_types, data_shapes
+    ).padded_batch(val_batch_size, padded_shapes)
+
+    return train_dataset, val_dataset, max_word_length, nb_train_batches
 
 
 def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLogger()):
@@ -33,90 +66,91 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLo
     loader.load()
     vocab = Vocab(loader)
     vocab.load()
-    tensor_generator = TensorGenerator(loader, vocab)
+
+    batch_size = 20
+    report_step = 10
 
     with tf.Session() as session:
-        batch_size = 20
-        report_step = 10
-        save_step = 50
+        train_dataset, val_dataset, max_word_length, nb_train_batches = init_datasets(loader, vocab, logger, batch_size)
+
+        iterator = tf.data.Iterator.from_structure(train_dataset.output_types, train_dataset.output_shapes)
+        train_initializer = iterator.make_initializer(train_dataset)
+        val_initializer = iterator.make_initializer(val_dataset)
+
+        input_tensor, target_tensor, target_mask_tensor = iterator.get_next()
 
         model = CharCnnLstm(
-            max_words_in_sentence=tensor_generator.max_sentence_length,
-            max_word_length=tensor_generator.max_word_length,
+            max_words_in_sentence=None,
+            max_word_length=max_word_length,
             char_vocab_size=vocab.char_vocab_size(),
-            num_output_classes=vocab.part_vocab_size()
+            num_output_classes=vocab.part_vocab_size(),
+            input_tensor=input_tensor,
+            target_tensor=target_tensor,
+            target_mask_tensor=target_mask_tensor
         )
         model.init_for_training(learning_rate=0.001)
         model.restore_latest_or_init(session, MODEL_SAVE_PATH)
 
-        start_time = time.time()
-        session.run(tf.global_variables_initializer())
-
-        input_tensor = tensor_generator.chars_tensor
-        target_tensor = tensor_generator.target_tensor
-        target_mask_tensor = tensor_generator.target_mask
-
-        train_x, test_x, train_y, test_y, train_mask, test_mask, train_sentences, test_sentences = \
-            train_test_split(input_tensor, target_tensor, target_mask_tensor,
-                             tensor_generator.sentences, random_state=0, train_size=0.8)
-        logger.info('train/test shapes: %s, %s / %s, %s' % (train_x.shape, train_y.shape, test_x.shape, test_y.shape))
-
         for epoch in range(epochs):
-            count = 0
-            for x, y, y_mask in batches(train_x, train_y, train_mask, batch_size=batch_size):
-                # if x.shape[0] != batch_size:
-                #     continue
-                count += 1
-                loss_value, _, gradient_norm, step = session.run([
-                    model.loss,
-                    model.train_op,
-                    model.global_norm,
-                    model.global_step
-                ], {
-                    model.input: x,
-                    model.targets: y,
-                    model.target_mask: y_mask + 0.01,
-                    model.lstm_dropout: 0.5
-                })
+            session.run(train_initializer)
 
-                if count % report_step == 0:
-                    test_loss_value, accuracy_value, predicted = session.run([
-                        model.loss, model.accuracy, model.predictions
+            batch = 0
+            start_time = time.time()
+            while True:
+                batch += 1
+                try:
+                    loss_value, _, gradient_norm, step = session.run([
+                        model.loss,
+                        model.train_op,
+                        model.global_norm,
+                        model.global_step
                     ], {
-                        model.input: test_x[:200],
-                        model.targets: test_y[:200],
-                        model.target_mask: test_mask[:200],
-                        model.lstm_dropout: 0.
+                        model.lstm_dropout: 0.5
                     })
-                    logging.info('        test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
-                    logging.debug('\n' + classification_report_with_labels(test_y[:200], predicted, vocab))
-                    log_level = logging.INFO
-                else:
-                    log_level = logging.DEBUG
-                logging.log(log_level, '%6d: %d [%5d/%5d], train_loss = %6.8f elapsed = %.4fs, grad.norm=%6.8f' % (
-                            step, epoch, count, train_x.shape[0] / batch_size,
-                            loss_value,
-                            time.time() - start_time,
-                            gradient_norm))
-                if count % save_step == 0:
-                    logging.info('Saving model...')
-                    model.save_model(session, MODEL_FILE_NAME)
+                    log_level = logging.INFO if batch % report_step == 0 else logging.DEBUG
+                    logging.log(log_level, '%6d: %d [%5d/%5d], train_loss = %6.8f elapsed = %.4fs, grad.norm=%6.8f' % (
+                        step, epoch, batch, nb_train_batches,
+                        loss_value,
+                        time.time() - start_time,
+                        gradient_norm))
+                except tf.errors.OutOfRangeError:
+                    break
+
+            session.run(val_initializer)
+
+            run_validations(session, model, vocab, target_tensor, logger)
 
             logging.info('Saving model...')
             model.save_model(session, MODEL_FILE_NAME)
-        test_loss_value, accuracy_value, predicted = session.run([
-            model.loss, model.accuracy, model.predictions
-        ], {
-            model.input: test_x,
-            model.targets: test_y,
-            model.target_mask: test_mask,
-            model.lstm_dropout: 0.
-        })
-        logger.info('Final test loss = %6.8f, test accuracy = %6.8f' % (test_loss_value, accuracy_value))
-        logging.info('\n' + classification_report_with_labels(test_y, predicted, vocab))
 
 
-if __name__ == '__main__':
+def run_validations(session, model, vocab, target_tensor, logger):
+    targets = []
+    predictions = []
+    loss = 0
+    nb_batches = 0
+    while True:
+        try:
+            batch_loss, batch_target, batch_predictions = session.run([
+                model.loss, target_tensor, model.predictions
+            ], {
+                model.lstm_dropout: 0.
+            })
+            loss += batch_loss
+            targets.append(batch_target.ravel())
+            predictions.append(batch_predictions.ravel())
+            nb_batches += 1
+        except tf.errors.OutOfRangeError:
+            break
+    targets = np.concatenate(targets)
+    predictions = np.concatenate(predictions)
+    loss /= nb_batches
+    accuracy = np.sum((predictions == targets) & (targets != 0)) / np.sum(targets != 0)
+    logger.info('Validation loss = %6.8f, validation accuracy = %6.8f' % (loss, accuracy))
+    logger.info('\n' + classification_report_with_labels(targets, predictions, vocab))
+
+
+def main():
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
@@ -135,3 +169,7 @@ if __name__ == '__main__':
     logger.addHandler(stream_handler)
 
     train_model(logger=logger)
+
+
+if __name__ == '__main__':
+    main()

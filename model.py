@@ -142,5 +142,6 @@ class CharCnnLstm(object):
             tf.equal(tf.cast(self.targets, tf.int64), self.predictions)
         )
 
-        self.accuracy = tf.reduce_sum(tf.cast(correct_predictions, tf.float32)) / (
-            tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(self.targets, tf.int64), 0), tf.float32)))
+        nb_of_non_pad_values = tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(self.targets, tf.int64), 0), tf.float32))
+        nb_of_correct_predictions = tf.reduce_sum(tf.cast(correct_predictions, tf.float32))
+        self.accuracy = nb_of_correct_predictions / nb_of_non_pad_values
