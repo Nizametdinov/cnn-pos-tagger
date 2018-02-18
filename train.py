@@ -4,6 +4,7 @@ import os
 import tensorflow as tf
 import time
 
+from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
@@ -26,22 +27,6 @@ def classification_report_with_labels(y_true, y_pred, vocab):
 def init_datasets(loader, vocab, logger, batch_size, val_batch_size=100):
     max_word_length = len(loader.get_longest_word()) + 2
 
-    def make_generator(sentences):
-        def data_generator():
-            WORD_START = '{'
-            WORD_END = '}'
-            for sentence in sentences:
-                targets = []
-                mask = [1.] * len(sentence)
-                char_tensor = np.zeros((len(sentence), max_word_length))
-                for j, (word, target_class) in enumerate(sentence):
-                    targets.append(vocab.part_to_index(target_class))
-                    word = WORD_START + word + WORD_END
-                    for k, char in enumerate(word):
-                        char_tensor[j, k] = vocab.char_to_index(char)
-                yield char_tensor, targets, mask
-        return data_generator
-
     train_sentences, val_sentences = train_test_split(loader.sentences, random_state=0, train_size=0.8)
     nb_train_batches = int(np.ceil(len(train_sentences) / batch_size))
     logger.info('train/validation set size: %d / %d' % (len(train_sentences), len(val_sentences)))
@@ -51,11 +36,11 @@ def init_datasets(loader, vocab, logger, batch_size, val_batch_size=100):
     padded_shapes = ([None, max_word_length], [None], [None])
 
     train_dataset = tf.data.Dataset.from_generator(
-        make_generator(train_sentences), data_types, data_shapes
+        TensorGenerator(train_sentences, vocab, max_word_length), data_types, data_shapes
     ).padded_batch(batch_size, padded_shapes)
 
     val_dataset = tf.data.Dataset.from_generator(
-        make_generator(val_sentences), data_types, data_shapes
+        TensorGenerator(val_sentences, vocab, max_word_length), data_types, data_shapes
     ).padded_batch(val_batch_size, padded_shapes)
 
     return train_dataset, val_dataset, max_word_length, nb_train_batches
@@ -158,7 +143,8 @@ def main():
 
     if not os.path.isdir('log'):
         os.mkdir('log')
-    file_handler = logging.FileHandler('log/training.log', encoding='UTF-8')
+    log_file = 'log/training_' + datetime.today().strftime('%Y%m%d_%H%M%S') + '.log'
+    file_handler = logging.FileHandler(log_file, encoding='UTF-8')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

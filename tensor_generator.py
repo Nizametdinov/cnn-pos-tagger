@@ -1,7 +1,5 @@
-from __future__ import print_function
 import numpy as np
-
-from data_reader import DataReader
+from typing import List, Tuple
 from vocab import Vocab
 
 
@@ -10,69 +8,21 @@ WORD_END = '}'
 
 
 class TensorGenerator:
-    def __init__(self, data_reader, vocab):
-        self._data_reader = data_reader
+    def __init__(self, sentences: List[List[Tuple[str, str]]], vocab: Vocab, max_word_length: int):
+        self._sentences = sentences
         self._vocab = vocab
-        self.sentences = self._data_reader.sentences
-        self.max_sentence_length = len(self._data_reader.get_longest_sentence())
-        self.max_word_length = len(self._data_reader.get_longest_word()) + 2
+        self._max_word_length = max_word_length
 
-        self.chars_tensor = np.zeros(
-            [len(self.sentences), self.max_sentence_length, self.max_word_length], dtype=np.int32)
-        self.target_tensor = np.zeros(
-            [len(self.sentences), self.max_sentence_length], dtype=np.int32)
-        self.target_mask = np.zeros(
-            [len(self.sentences), self.max_sentence_length], dtype=np.float32)
-        self.generate_tensors()
-
-    def generate_tensors(self):
-        for i, sentence in enumerate(self.sentences):
+    def __call__(self):
+        for sentence in self._sentences:
+            targets = []
+            mask = [1] * len(sentence)
+            char_tensor = np.zeros((len(sentence), self._max_word_length), dtype=np.int32)
             for j, (word, target_class) in enumerate(sentence):
-                self.target_tensor[i, j] = self._vocab.part_to_index(target_class)
-                self.target_mask[i, j] = 1
+                targets.append(self._vocab.part_to_index(target_class))
+                if len(word) + 2 > self._max_word_length:
+                    word = word[:self._max_word_length - 2]
                 word = WORD_START + word + WORD_END
-                for k, symbol in enumerate(word):
-                    self.chars_tensor[i, j, k] = self._vocab.char_to_index(symbol)
-
-    def tensor_from_sentences(self, sentences):
-        chars_tensor = np.zeros(
-            [
-                len(sentences),
-                self.max_sentence_length,
-                self.max_word_length
-            ],
-            dtype=np.int32
-        )
-
-        for i, sentence in enumerate(sentences):
-            for j, word in enumerate(sentence):
-                word = WORD_START + word + WORD_END
-                for k, symbol in enumerate(word):
-                    chars_tensor[i, j, k] = self._vocab.char_to_index(symbol)
-
-        return chars_tensor
-
-
-if __name__ == '__main__':
-    from download_data import OPEN_CORPORA_DEST_FILE
-
-    loader = DataReader(OPEN_CORPORA_DEST_FILE)
-    loader.load()
-    vocab = Vocab(loader)
-    vocab.load()
-
-    print('sentences count: ', len(loader.sentences))
-    longest_sentence = loader.get_longest_sentence()
-    print('longest sentence: ', longest_sentence)
-    print('max sentence length: ', len(longest_sentence))
-    longest_word = loader.get_longest_word()
-    print('longest word: ', longest_word)
-    print('longest word chars: ', len(longest_word))
-    # uniq_chars = loader.get_uniq_chars()
-    # print('uniq_chars count: ', len(uniq_chars))
-    # print('uniq_chars: ', uniq_chars)
-
-    tg = TensorGenerator(loader, vocab)
-    print(tg.chars_tensor.shape)
-    print(tg.chars_tensor[1])
-    print(tg.target_tensor[1])
+                for k, char in enumerate(word):
+                    char_tensor[j, k] = self._vocab.char_to_index(char)
+            yield char_tensor, targets, mask
