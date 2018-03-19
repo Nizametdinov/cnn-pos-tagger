@@ -121,11 +121,10 @@ class Vocab:
 
 
 if __name__ == '__main__':
-    # debug
-    from data_reader import DataReader
+    from data_reader import OpenCorporaReader
     from download_data import OPEN_CORPORA_DEST_FILE
 
-    data_reader = DataReader(OPEN_CORPORA_DEST_FILE)
+    data_reader = OpenCorporaReader(OPEN_CORPORA_DEST_FILE)
     data_reader.load()
 
     vocab = Vocab(data_reader)

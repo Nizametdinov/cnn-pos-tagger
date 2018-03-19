@@ -2,7 +2,7 @@ import xml.etree.ElementTree as etree
 import operator
 
 
-class DataReader:
+class OpenCorporaReader:
     SKIPPED_SPEECH_PARTS = {'PNCT', 'NUMB', 'SYMB', 'LATN', 'ROMN'}
     STOP_CHARS_CODES = range(ord('a'), ord('z'))
 
@@ -65,37 +65,37 @@ class DataReader:
 
     def get_uniq_chars(self):
         if not self._loaded:
-            raise BaseException('data not loaded')
+            raise BaseException('data is not loaded')
 
         return self._uniq_chars.keys()
 
     def get_uniq_speech_parts(self):
         if not self._loaded:
-            raise BaseException('data not loaded')
+            raise BaseException('data is not loaded')
 
         return self._uniq_speech_parts.keys()
 
     def get_longest_sentence(self):
         if not self._loaded:
-            raise BaseException('data not loaded')
+            raise BaseException('data is not loaded')
 
         return max(self.sentences, key=lambda sentence: len(sentence))
 
     def get_chars_freq(self):
         if not self._loaded:
-            raise BaseException('data not loaded')
+            raise BaseException('data is not loaded')
 
         return sorted(self._uniq_chars.items(), key = operator.itemgetter(1))
 
     def get_speech_parts_freq(self):
         if not self._loaded:
-            raise BaseException('data not loaded')
+            raise BaseException('data is not loaded')
 
         return sorted(self._uniq_speech_parts.items(), key = operator.itemgetter(1))
 
     def get_longest_word(self):
         if not self._loaded:
-            raise BaseException('data not loaded')
+            raise BaseException('data is not loaded')
 
         max_length = 0
         longest_word = ''
@@ -112,7 +112,7 @@ class DataReader:
 if __name__ == '__main__':
     from download_data import OPEN_CORPORA_DEST_FILE
 
-    loader = DataReader(OPEN_CORPORA_DEST_FILE)
+    loader = OpenCorporaReader(OPEN_CORPORA_DEST_FILE)
     loader.load()
 
     print('unique chars', loader.get_chars_freq())

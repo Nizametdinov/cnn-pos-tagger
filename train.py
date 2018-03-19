@@ -8,7 +8,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
-from data_reader import DataReader
+from data_reader import OpenCorporaReader
 from download_data import OPEN_CORPORA_DEST_FILE
 from model import CharCnnLstm
 from tensor_generator import TensorGenerator
@@ -51,7 +51,7 @@ class TrainInfo:
 
 
 def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLogger()):
-    loader = DataReader(data_file)
+    loader = OpenCorporaReader(data_file)
     loader.load()
     vocab = Vocab(loader)
     vocab.load()
