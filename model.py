@@ -29,7 +29,29 @@ def lstm_cell_with_dropout(rnn_size, dropout):
     return cell
 
 
+def variable_summaries(var, verbose=False):
+    """Attach summaries to a Tensor (for TensorBoard visualization)."""
+    name = var.name.replace(':', '_')
+    with tf.name_scope(f'summaries/{name}'):
+        histogram = tf.summary.histogram('histogram', var)
+        if verbose:
+            mean = tf.reduce_mean(var)
+            with tf.name_scope('stddev'):
+                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+            return [
+                tf.summary.scalar('mean', mean),
+                tf.summary.scalar('stddev', stddev),
+                tf.summary.scalar('max', tf.reduce_max(var)),
+                tf.summary.scalar('min', tf.reduce_min(var)),
+                histogram
+            ]
+        else:
+            return [histogram]
+
+
 class CharCnnLstm(object):
+    VARIABLE_SCOPE = 'char_cnn_lstm'
+
     def __init__(self, max_words_in_sentence, max_word_length, char_vocab_size, num_output_classes,
                  input_tensor=None, target_tensor=None, target_mask_tensor=None):
         self.max_words_in_sentence = max_words_in_sentence
@@ -64,25 +86,29 @@ class CharCnnLstm(object):
 
         self._saver = None
 
+        self.loss_acc_summary = None
+        self.variable_summaries = None
+
     def saver(self):
         if not self._saver:
             self._saver = tf.train.Saver()
         return self._saver
 
     def init_for_evaluation(self):
-        embeddings = tf.get_variable('char_embeddings',
-                                     [self.char_vocab_size, self.embedding_size],
-                                     initializer=tf.truncated_normal_initializer(stddev=0.1))
-        cnn_input = tf.nn.embedding_lookup(embeddings, self.input)
+        with tf.variable_scope(self.VARIABLE_SCOPE):
+            embeddings = tf.get_variable('char_embeddings',
+                                         [self.char_vocab_size, self.embedding_size],
+                                         initializer=tf.truncated_normal_initializer(stddev=0.1))
+            cnn_input = tf.nn.embedding_lookup(embeddings, self.input)
 
-        cnn_output = self._char_cnn(cnn_input)
-        # cnn_output.shape => [batch_size * max_words_in_sentence, sum(self.kernel_features)]
-        highway_output = highway(cnn_output, cnn_output.shape[-1], num_layers=self.num_highway_layers)
-        highway_output = tf.reshape(highway_output, [-1, tf.shape(self.input)[1], int(highway_output.shape[-1])])
-        rnn_output = self._lstm(highway_output)
-        # rnn_output.shape = [batch_size, max_words_in_sentence, rnn_size * 2]
-        logits = tf.layers.dense(rnn_output, self.num_output_classes, activation=None)
-        self._loss(logits)
+            cnn_output = self._char_cnn(cnn_input)
+            # cnn_output.shape => [batch_size * max_words_in_sentence, sum(self.kernel_features)]
+            highway_output = highway(cnn_output, cnn_output.shape[-1], num_layers=self.num_highway_layers)
+            highway_output = tf.reshape(highway_output, [-1, tf.shape(self.input)[1], int(highway_output.shape[-1])])
+            rnn_output = self._lstm(highway_output)
+            # rnn_output.shape = [batch_size, max_words_in_sentence, rnn_size * 2]
+            logits = tf.layers.dense(rnn_output, self.num_output_classes, activation=None)
+            self._loss(logits)
 
     def init_for_training(self, learning_rate=0.01, max_grad_norm=5.0):
         self.init_for_evaluation()
@@ -90,7 +116,7 @@ class CharCnnLstm(object):
         self.learning_rate = tf.Variable(learning_rate, name='learning_rate', trainable=False)
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
-        tvars = tf.trainable_variables()
+        tvars = tf.trainable_variables(self.VARIABLE_SCOPE)
         grads, self.global_norm = tf.clip_by_global_norm(tf.gradients(self.loss, tvars), max_grad_norm)
 
         optimizer = tf.train.AdamOptimizer(self.learning_rate)
@@ -106,6 +132,16 @@ class CharCnnLstm(object):
             logging.info("model has been restored from: %s" % latest_checkpoint)
         else:
             session.run(tf.global_variables_initializer())
+
+    def init_summaries(self, verbose=False):
+        loss = tf.summary.scalar('loss', self.loss)
+        accuracy = tf.summary.scalar('accuracy', self.accuracy)
+        self.loss_acc_summary = tf.summary.merge([loss, accuracy])
+
+        var_summaries = []
+        for var in tf.trainable_variables(self.VARIABLE_SCOPE):
+            var_summaries.extend(variable_summaries(var, verbose))
+        self.variable_summaries = tf.summary.merge(var_summaries)
 
     def _char_cnn(self, cnn_input):
         with tf.variable_scope('char_cnn'):
@@ -131,17 +167,19 @@ class CharCnnLstm(object):
         return tf.concat(outputs, 2)
 
     def _loss(self, logits):
-        self.loss = tf.reduce_mean(
-            tf.multiply(self.target_mask,
-                        tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.targets)))
+        with tf.name_scope('loss'):
+            self.loss = tf.reduce_mean(
+                tf.multiply(self.target_mask,
+                            tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.targets)))
 
         self.predictions = tf.argmax(logits, 2)
 
-        correct_predictions = tf.logical_and(
-            tf.not_equal(tf.cast(self.targets, tf.int64), 0),
-            tf.equal(tf.cast(self.targets, tf.int64), self.predictions)
-        )
+        with tf.name_scope('accuracy'):
+            correct_predictions = tf.logical_and(
+                tf.not_equal(tf.cast(self.targets, tf.int64), 0),
+                tf.equal(tf.cast(self.targets, tf.int64), self.predictions)
+            )
 
-        nb_of_non_pad_values = tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(self.targets, tf.int64), 0), tf.float32))
-        nb_of_correct_predictions = tf.reduce_sum(tf.cast(correct_predictions, tf.float32))
-        self.accuracy = nb_of_correct_predictions / nb_of_non_pad_values
+            nb_of_non_pad_values = tf.reduce_sum(tf.cast(tf.not_equal(tf.cast(self.targets, tf.int64), 0), tf.float32))
+            nb_of_correct_predictions = tf.reduce_sum(tf.cast(correct_predictions, tf.float32))
+            self.accuracy = nb_of_correct_predictions / nb_of_non_pad_values

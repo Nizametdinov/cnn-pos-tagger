@@ -46,6 +46,10 @@ def init_datasets(loader, vocab, logger, batch_size, val_batch_size=100):
     return train_dataset, val_dataset, max_word_length, nb_train_batches
 
 
+class TrainInfo:
+    __slots__ = 'start_time', 'nb_of_batches', 'epoch', 'batch'
+
+
 def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLogger()):
     loader = DataReader(data_file)
     loader.load()
@@ -53,7 +57,6 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLo
     vocab.load()
 
     batch_size = 20
-    report_step = 10
 
     with tf.Session() as session:
         train_dataset, val_dataset, max_word_length, nb_train_batches = init_datasets(loader, vocab, logger, batch_size)
@@ -74,42 +77,84 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLo
             target_mask_tensor=target_mask_tensor
         )
         model.init_for_training(learning_rate=0.001)
+        model.init_summaries()
         model.restore_latest_or_init(session, MODEL_SAVE_PATH)
 
+        train_summary_writer = tf.summary.FileWriter('board/train', session.graph)
+        test_summary_writer = tf.summary.FileWriter('board/test')
+
+        train_info = TrainInfo()
+        train_info.nb_of_batches = nb_train_batches
+        train_info.start_time = time.time()
         for epoch in range(epochs):
+            train_info.epoch = epoch + 1
             session.run(train_initializer)
 
-            batch = 0
-            start_time = time.time()
+            train_info.batch = 0
             while True:
-                batch += 1
+                train_info.batch += 1
                 try:
-                    loss_value, _, gradient_norm, step = session.run([
-                        model.loss,
-                        model.train_op,
-                        model.global_norm,
-                        model.global_step
-                    ], {
-                        model.lstm_dropout: 0.5
-                    })
-                    log_level = logging.INFO if batch % report_step == 0 else logging.DEBUG
-                    logging.log(log_level, '%6d: %d [%5d/%5d], train_loss = %6.8f elapsed = %.4fs, grad.norm=%6.8f' % (
-                        step, epoch, batch, nb_train_batches,
-                        loss_value,
-                        time.time() - start_time,
-                        gradient_norm))
+                    step = train_step(session, model, train_info, train_summary_writer, logger)
                 except tf.errors.OutOfRangeError:
                     break
 
             session.run(val_initializer)
 
-            run_validations(session, model, vocab, target_tensor, logger)
+            run_validations(session, model, vocab, target_tensor, test_summary_writer, step, logger)
 
             logging.info('Saving model...')
             model.save_model(session, MODEL_FILE_NAME)
+        train_summary_writer.close()
+        test_summary_writer.close()
 
 
-def run_validations(session, model, vocab, target_tensor, logger):
+def train_step(session: tf.Session,
+               model: CharCnnLstm,
+               train_info: TrainInfo,
+               summary_writer: tf.summary.FileWriter,
+               logger: logging.Logger,
+               report_step: int = 20):
+    if train_info.batch % report_step == 0:
+        loss_value, _, gradient_norm, step, loss_acc_summary, variable_summaries = session.run([
+            model.loss,
+            model.train_op,
+            model.global_norm,
+            model.global_step,
+            model.loss_acc_summary,
+            model.variable_summaries
+        ], {
+            model.lstm_dropout: 0.5
+        })
+        summary_writer.add_summary(loss_acc_summary, step)
+        summary_writer.add_summary(variable_summaries, step)
+        log_level = logging.INFO
+    else:
+        loss_value, _, gradient_norm, step = session.run([
+            model.loss,
+            model.train_op,
+            model.global_norm,
+            model.global_step
+        ], {
+            model.lstm_dropout: 0.5
+        })
+        log_level = logging.DEBUG
+    logger.log(log_level, '%6d: %d [%5d/%5d], train_loss = %6.8f elapsed = %.4fs, grad.norm=%6.8f' % (
+        step, train_info.epoch, train_info.batch, train_info.nb_of_batches,
+        loss_value,
+        time.time() - train_info.start_time,
+        gradient_norm))
+
+    return step
+
+
+def run_validations(
+        session: tf.Session,
+        model: CharCnnLstm,
+        vocab: Vocab,
+        target_tensor: tf.Tensor,
+        summary_writer: tf.summary.FileWriter,
+        step: int,
+        logger: logging.Logger):
     targets = []
     predictions = []
     loss = 0
@@ -133,6 +178,12 @@ def run_validations(session, model, vocab, target_tensor, logger):
     accuracy = np.sum((predictions == targets) & (targets != 0)) / np.sum(targets != 0)
     logger.info('Validation loss = %6.8f, validation accuracy = %6.8f' % (loss, accuracy))
     logger.info('\n' + classification_report_with_labels(targets, predictions, vocab))
+
+    summary = tf.Summary(value=[
+        tf.Summary.Value(tag='loss', simple_value=loss),
+        tf.Summary.Value(tag='accuracy', simple_value=accuracy),
+    ])
+    summary_writer.add_summary(summary, step)
 
 
 def main():
