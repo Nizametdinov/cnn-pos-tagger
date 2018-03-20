@@ -52,9 +52,9 @@ def variable_summaries(var, verbose=False):
 class CharCnnLstm(object):
     VARIABLE_SCOPE = 'char_cnn_lstm'
 
-    def __init__(self, max_words_in_sentence, max_word_length, char_vocab_size, num_output_classes,
+    def __init__(self, max_word_length, char_vocab_size, num_output_classes,
                  input_tensor=None, target_tensor=None, target_mask_tensor=None):
-        self.max_words_in_sentence = max_words_in_sentence
+        # self.max_words_in_sentence = max_words_in_sentence
         self.max_word_length = max_word_length
         self.char_vocab_size = char_vocab_size
         self.num_output_classes = num_output_classes
@@ -70,9 +70,9 @@ class CharCnnLstm(object):
             self.targets = target_tensor
             self.target_mask = target_mask_tensor
         else:
-            self.input = tf.placeholder(tf.int32, [None, self.max_words_in_sentence, self.max_word_length])
-            self.targets = tf.placeholder(tf.int32, [None, self.max_words_in_sentence], name='targets')
-            self.target_mask = tf.placeholder(tf.float32, [None, self.max_words_in_sentence], name='target_mask')
+            self.input = tf.placeholder(tf.int32, [None, None, self.max_word_length])
+            self.targets = tf.placeholder(tf.int32, [None, None], name='targets')
+            self.target_mask = tf.placeholder(tf.float32, [None, None], name='target_mask')
         self.lstm_dropout = tf.placeholder(tf.float32)
 
         self.loss = None
@@ -124,6 +124,9 @@ class CharCnnLstm(object):
 
     def save_model(self, session, path):
         self.saver().save(session, path)
+
+    def restore_model(self, session, checkpoint):
+        self.saver().restore(session, checkpoint)
 
     def restore_latest_or_init(self, session, model_dir):
         latest_checkpoint = tf.train.latest_checkpoint(model_dir)
