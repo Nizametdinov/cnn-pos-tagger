@@ -5,6 +5,7 @@ import tensorflow as tf
 import time
 
 from datetime import datetime
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
@@ -15,8 +16,10 @@ from tensor_generator import TensorGenerator
 from vocab import Vocab
 
 
-MODEL_SAVE_PATH = './model'
-MODEL_FILE_NAME = './model/model.ckpt'
+tf.flags.DEFINE_string( 'train_dir',  'saved_models', 'models and summaries are saved there')
+tf.flags.DEFINE_integer('epochs',     2,              'number of training epochs')
+tf.flags.DEFINE_string( 'checkpoint', '',             'if provided variables will be restored from this checkpoint')
+FLAGS = tf.flags.FLAGS
 
 
 def classification_report_with_labels(y_true, y_pred, vocab):
@@ -50,11 +53,12 @@ class TrainInfo:
     __slots__ = 'start_time', 'nb_of_batches', 'epoch', 'batch'
 
 
-def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLogger()):
+def train_model(data_file=OPEN_CORPORA_DEST_FILE, logger=logging.getLogger()):
     loader = OpenCorporaReader(data_file)
     loader.load()
     vocab = Vocab(loader)
     vocab.load()
+    train_dir = Path(FLAGS.train_dir)
 
     batch_size = 20
 
@@ -68,7 +72,6 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLo
         input_tensor, target_tensor, target_mask_tensor = iterator.get_next()
 
         model = CharCnnLstm(
-            max_words_in_sentence=None,
             max_word_length=max_word_length,
             char_vocab_size=vocab.char_vocab_size(),
             num_output_classes=vocab.part_vocab_size(),
@@ -78,15 +81,16 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLo
         )
         model.init_for_training(learning_rate=0.001)
         model.init_summaries()
-        model.restore_latest_or_init(session, MODEL_SAVE_PATH)
+        if FLAGS.checkpoint:
+            model.restore_model(session, FLAGS.checkpoint)
 
-        train_summary_writer = tf.summary.FileWriter('board/train', session.graph)
-        test_summary_writer = tf.summary.FileWriter('board/test')
+        train_summary_writer = tf.summary.FileWriter(str(train_dir / 'board/train'), session.graph)
+        test_summary_writer = tf.summary.FileWriter(str(train_dir / 'board/test'))
 
         train_info = TrainInfo()
         train_info.nb_of_batches = nb_train_batches
         train_info.start_time = time.time()
-        for epoch in range(epochs):
+        for epoch in range(FLAGS.epochs):
             train_info.epoch = epoch + 1
             session.run(train_initializer)
 
@@ -103,7 +107,8 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, epochs=2, logger=logging.getLo
             run_validations(session, model, vocab, target_tensor, test_summary_writer, step, logger)
 
             logging.info('Saving model...')
-            model.save_model(session, MODEL_FILE_NAME)
+            checkpoint_name = f'epoch_{epoch:02d}.ckpt' if epoch != FLAGS.epochs - 1 else 'model.ckpt'
+            model.save_model(session, str(train_dir / checkpoint_name))
         train_summary_writer.close()
         test_summary_writer.close()
 
@@ -138,11 +143,12 @@ def train_step(session: tf.Session,
             model.lstm_dropout: 0.5
         })
         log_level = logging.DEBUG
-    logger.log(log_level, '%6d: %d [%5d/%5d], train_loss = %6.8f elapsed = %.4fs, grad.norm=%6.8f' % (
-        step, train_info.epoch, train_info.batch, train_info.nb_of_batches,
-        loss_value,
-        time.time() - train_info.start_time,
-        gradient_norm))
+    elapsed = time.time() - train_info.start_time
+    logger.log(
+        log_level,
+        f'{step:6}: {train_info.epoch} [{train_info.batch:5}/{train_info.nb_of_batches:5}], '
+        f'train_loss = {loss_value:6.8f} elapsed = {elapsed:.4f}s, grad.norm={gradient_norm:6.8f}'
+    )
 
     return step
 
@@ -176,7 +182,7 @@ def run_validations(
     predictions = np.concatenate(predictions)
     loss /= nb_batches
     accuracy = np.sum((predictions == targets) & (targets != 0)) / np.sum(targets != 0)
-    logger.info('Validation loss = %6.8f, validation accuracy = %6.8f' % (loss, accuracy))
+    logger.info(f'Validation loss = {loss:6.8f}, validation accuracy = {accuracy:6.8f}')
     logger.info('\n' + classification_report_with_labels(targets, predictions, vocab))
 
     summary = tf.Summary(value=[
@@ -186,7 +192,7 @@ def run_validations(
     summary_writer.add_summary(summary, step)
 
 
-def main():
+def main(_argv):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
@@ -209,4 +215,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    tf.app.run()
