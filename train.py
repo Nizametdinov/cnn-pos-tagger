@@ -22,9 +22,13 @@ tf.flags.DEFINE_string( 'checkpoint', '',             'if provided variables wil
 FLAGS = tf.flags.FLAGS
 
 
-def classification_report_with_labels(y_true, y_pred, vocab):
-    labels = np.array(vocab._index2part)[np.unique([y_true, y_pred])]
-    return classification_report(y_true.flatten(), y_pred.flatten(), target_names=labels, digits=3)
+def classification_report_with_labels(y_true, y_pred, vocab: Vocab):
+    # flatten and remove padding
+    y_true = y_true.flatten()
+    y_pred = y_pred.flatten()[y_true != 0]
+    y_true = y_true[y_true != 0]
+    labels = vocab.indices_to_speech_part(np.unique([y_true, y_pred]))
+    return classification_report(y_true, y_pred, target_names=labels, digits=3)
 
 
 def init_datasets(loader, vocab, logger, batch_size, val_batch_size=100):

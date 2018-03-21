@@ -1,4 +1,4 @@
-import math
+import numpy as np
 
 
 class Vocab:
@@ -73,8 +73,8 @@ class Vocab:
             self._feed_speech_part(part)
 
     def _calculate_char_freq_threshold(self):
-         _char, max_freq = self._data_reader.get_chars_freq()[-1]
-         self._char_freq_threshold = math.ceil(max_freq * 0.01) # 1% of max freshold
+        _char, max_freq = self._data_reader.get_chars_freq()[-1]
+        self._char_freq_threshold = np.ceil(max_freq * 0.01)  # 1% of max threshold
 
     def _find_low_freq_chars(self):
         self._calculate_char_freq_threshold()
@@ -108,6 +108,12 @@ class Vocab:
             raise BaseException('chars not loaded')
 
         return self._index2part[index]
+
+    def indices_to_speech_part(self, indices):
+        if not self._loaded:
+            raise BaseException('chars not loaded')
+
+        return np.array(self._index2part)[indices]
 
     def index_to_speech_part_human(self, index):
         pos_code = self.index_to_speech_part(index)
