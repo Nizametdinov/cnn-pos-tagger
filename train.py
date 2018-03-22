@@ -93,6 +93,9 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, logger=logging.getLogger()):
         train_summary_writer = tf.summary.FileWriter(str(train_dir / 'board/train'), session.graph)
         test_summary_writer = tf.summary.FileWriter(str(train_dir / 'board/test'))
 
+        step, variable_summaries = session.run([model.global_step, model.variable_summaries])
+        test_summary_writer.add_summary(variable_summaries, step)
+
         train_info = TrainInfo()
         train_info.nb_of_batches = nb_train_batches
         train_info.start_time = time.time()
@@ -126,18 +129,16 @@ def train_step(session: tf.Session,
                logger: logging.Logger,
                report_step: int = 20):
     if train_info.batch % report_step == 0:
-        loss_value, _, gradient_norm, step, loss_acc_summary, variable_summaries = session.run([
+        loss_value, _, gradient_norm, step, loss_acc_summary = session.run([
             model.loss,
             model.train_op,
             model.global_norm,
             model.global_step,
-            model.loss_acc_summary,
-            model.variable_summaries
+            model.loss_acc_summary
         ], {
             model.lstm_dropout: 0.5
         })
         summary_writer.add_summary(loss_acc_summary, step)
-        summary_writer.add_summary(variable_summaries, step)
         log_level = logging.INFO
     else:
         loss_value, _, gradient_norm, step = session.run([
@@ -173,8 +174,11 @@ def run_validations(
     nb_batches = 0
     while True:
         try:
-            batch_loss, batch_target, batch_predictions = session.run([
-                model.loss, target_tensor, model.predictions
+            batch_loss, batch_target, batch_predictions, variable_summaries = session.run([
+                model.loss,
+                target_tensor,
+                model.predictions,
+                model.variable_summaries
             ], {
                 model.lstm_dropout: 0.
             })
@@ -196,6 +200,7 @@ def run_validations(
         tf.Summary.Value(tag='accuracy', simple_value=accuracy),
     ])
     summary_writer.add_summary(summary, step)
+    summary_writer.add_summary(variable_summaries, step)
 
 
 def main(_argv):
