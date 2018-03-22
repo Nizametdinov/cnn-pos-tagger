@@ -87,6 +87,8 @@ def train_model(data_file=OPEN_CORPORA_DEST_FILE, logger=logging.getLogger()):
         model.init_summaries()
         if FLAGS.checkpoint:
             model.restore_model(session, FLAGS.checkpoint)
+        else:
+            session.run(tf.global_variables_initializer())
 
         train_summary_writer = tf.summary.FileWriter(str(train_dir / 'board/train'), session.graph)
         test_summary_writer = tf.summary.FileWriter(str(train_dir / 'board/test'))
