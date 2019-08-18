@@ -12,9 +12,9 @@ def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'
 
     with tf.variable_scope(scope):
         for idx in range(num_layers):
-            g = f(tf.layers.dense(input_, size))
+            g = f(tf.keras.layers.Dense(size)(input_))
 
-            t = tf.sigmoid(tf.layers.dense(input_, size) + bias)
+            t = tf.sigmoid(tf.keras.layers.Dense(size)(input_) + bias)
 
             output = t * g + (1. - t) * input_
             input_ = output
@@ -107,7 +107,7 @@ class CharCnnLstm(object):
             highway_output = tf.reshape(highway_output, [-1, tf.shape(self.input)[1], int(highway_output.shape[-1])])
             rnn_output = self._lstm(highway_output)
             # rnn_output.shape = [batch_size, max_words_in_sentence, rnn_size * 2]
-            logits = tf.layers.dense(rnn_output, self.num_output_classes, activation=None)
+            logits = tf.keras.layers.Dense(self.num_output_classes, activation=None)(rnn_output)
             self._loss(logits)
 
     def init_for_training(self, learning_rate=0.01, max_grad_norm=5.0):
@@ -152,9 +152,9 @@ class CharCnnLstm(object):
             cnn_output = []
             for i, (kernel_width, number_of_features) in enumerate(zip(self.kernel_widths, self.kernel_features)):
                 reduced_size = self.max_word_length - kernel_width + 1
-                conv = tf.layers.conv1d(cnn_input, number_of_features, kernel_width, padding='valid')
+                conv = tf.keras.layers.Conv1D(number_of_features, kernel_width, padding='valid')(cnn_input)
                 # conv.shape => [batch_size * max_words_in_sentence, reduced_size, number_of_features]
-                pool = tf.layers.max_pooling1d(conv, reduced_size, strides=1, padding='valid')
+                pool = tf.keras.layers.MaxPool1D(reduced_size, strides=1, padding='valid')(conv)
                 # pool.shape => [batch_size * max_words_in_sentence, 1, number_of_features]
                 cnn_output.append(tf.squeeze(pool, 1))
             cnn_output = tf.concat(cnn_output, 1)
